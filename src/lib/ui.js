@@ -62,17 +62,22 @@ export function baseStyles() {
     `;
   }
 
-export function pageShell({ title, body, rightPill = "MVP • Early access" }) {
+export function pageShell({ title, body, rightPill = "MVP • Early access", fullWidth = false }) {
+    const wrapClass = fullWidth ? "wrap wrap-full" : "wrap";
+  
     return `<!doctype html>
   <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(title)}</title>
-    <style>${baseStyles()}</style>
+    <style>
+      ${baseStyles()}
+      .wrap-full { max-width: none !important; width: 100% !important; }
+    </style>
   </head>
   <body>
-    <div class="wrap">
+    <div class="${wrapClass}">
       <div class="nav">
         <div class="brand"><a href="/" style="color:inherit;text-decoration:none">NextOffer</a></div>
         <div class="pill">${escapeHtml(rightPill)}</div>
@@ -81,4 +86,5 @@ export function pageShell({ title, body, rightPill = "MVP • Early access" }) {
     </div>
   </body>
   </html>`;
-  }
+}
+  
