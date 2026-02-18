@@ -430,7 +430,87 @@ export async function renderTrustProfilesPage(request, env) {
           </div>
   
           <div class="divider"></div>
-          <div id="list" class="fine">Loading…</div>
+          <style>
+            .filters {
+                position: sticky;
+                top: 0;
+                z-index: 5;
+                background: rgba(255,255,255,.92);
+                backdrop-filter: blur(6px);
+                border: 1px solid var(--border);
+                border-radius: 16px;
+                padding: 10px;
+                box-shadow: 0 8px 20px rgba(11,18,32,.06);
+                margin-bottom: 10px;
+            }
+            .chiprow { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+            .chip {
+                border: 1px solid var(--border);
+                background: rgba(11,18,32,.03);
+                color: rgba(11,18,32,.82);
+                padding: 8px 10px;
+                border-radius: 999px;
+                cursor: pointer;
+                font-weight: 700;
+                user-select: none;
+            }
+            .chip[data-active="1"]{
+                background: rgba(0, 170, 170, .14);    /* Tropea Sea-ish */
+                border-color: rgba(0, 170, 170, .35);
+                color: rgba(0, 100, 100, 1);
+            }
+            .filters input, .filters select {
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 8px 10px;
+                background: rgba(255,255,255,.9);
+            }
+
+            /* ✅ make the list itself scroll */
+            #listWrap {
+                max-height: calc(100vh - 320px);
+                overflow: auto;
+                padding-right: 6px;
+            }
+          </style>
+
+            <div class="filters">
+            <div class="chiprow">
+                <span class="fine" style="min-width:60px;">Bucket</span>
+                <button class="chip" id="b_all" data-bucket="">All</button>
+                <button class="chip" id="b_green" data-bucket="green">Green</button>
+                <button class="chip" id="b_yellow" data-bucket="yellow">Yellow</button>
+                <button class="chip" id="b_red" data-bucket="red">Red</button>
+
+                <span class="spacer"></span>
+
+                <label class="fine">Score</label>
+                <select id="scoreFilter">
+                <option value="">Any</option>
+                <option value="80">≥ 80</option>
+                <option value="60">60–79</option>
+                <option value="0">< 60</option>
+                </select>
+
+                <label class="fine">Search</label>
+                <input id="q" type="text" placeholder="filename…" style="width:200px;" />
+            </div>
+
+            <div class="chiprow" style="margin-top:10px;">
+                <span class="fine" style="min-width:60px;">Signals</span>
+                <button class="chip" data-sig="duplicate_resume_upload">Duplicate upload</button>
+                <button class="chip" data-sig="timeline_overlap">Overlap</button>
+                <button class="chip" data-sig="gap_gt_6mo">Gap</button>
+
+                <span class="spacer"></span>
+                <button class="btn btn-ghost" id="clearFilters" type="button">Clear</button>
+            </div>
+            </div>
+
+            <div id="listWrap">
+            <div id="list" class="fine">Loading…</div>
+            </div>
+
         </div>
   
         <script>
@@ -500,22 +580,118 @@ export async function renderTrustProfilesPage(request, env) {
             );
           }
   
-          async function load() {
+            let allItems = [];
+            let state = { bucket: "", score: "", q: "", sigs: [] };
+
+            function setChipActive(el, on) {
+            if (!el) return;
+            el.dataset.active = on ? "1" : "0";
+            }
+
+            function scorePass(latest, scoreMode) {
+            if (!latest) return false;
+            const s = Number(latest.trust_score || 0);
+            if (!scoreMode) return true;
+            if (scoreMode === "80") return s >= 80;
+            if (scoreMode === "60") return s >= 60 && s < 80;
+            if (scoreMode === "0") return s < 60;
+            return true;
+            }
+
+            function hasAnySignal(item, sigs) {
+            if (!sigs.length) return true;
+            const ids = item?.latest_report?.signal_ids || [];
+            return sigs.some(x => ids.includes(x));
+            }
+
+            function applyFilters(items) {
+            const q = (state.q || "").toLowerCase().trim();
+            return items.filter(it => {
+                const latest = it.latest_report;
+                if (state.bucket && String(latest?.bucket || "") !== state.bucket) return false;
+                if (!scorePass(latest, state.score)) return false;
+                if (q && !String(it.filename || "").toLowerCase().includes(q)) return false;
+                if (!hasAnySignal(it, state.sigs)) return false;
+                return true;
+            });
+            }
+
+            function render() {
+            const el = document.getElementById("list");
+            const items = applyFilters(allItems);
+            el.innerHTML = items.length
+                ? '<div style="display:grid; grid-template-columns: 1fr; gap:10px;">' + items.map(row).join("") + '</div>'
+                : '<div class="fine">No matches.</div>';
+            }
+
+            async function load() {
             const el = document.getElementById("list");
             el.textContent = "Loading…";
             const res = await fetch("/api/trust/profiles");
             const data = await readJson(res);
             if (!res.ok) {
-              el.textContent = data.error || "Failed";
-              return;
+                el.textContent = data.error || "Failed";
+                return;
             }
-            const items = data.items || [];
-            el.innerHTML = items.length
-              ? '<div style="display:grid; grid-template-columns: 1fr; gap:10px;">' + items.map(row).join("") + '</div>'
-              : '<div class="fine">No profiles yet.</div>';
-          }
+            allItems = data.items || [];
+            render();
+            }
+
   
           document.getElementById("refresh").addEventListener("click", load);
+            // Bucket chips
+            ["b_all","b_green","b_yellow","b_red"].forEach(id => {
+            const btn = document.getElementById(id);
+            btn?.addEventListener("click", () => {
+                state.bucket = btn.dataset.bucket || "";
+                ["b_all","b_green","b_yellow","b_red"].forEach(x => setChipActive(document.getElementById(x), false));
+                setChipActive(btn, true);
+                render();
+            });
+            });
+            setChipActive(document.getElementById("b_all"), true);
+
+            // Score dropdown
+            document.getElementById("scoreFilter")?.addEventListener("change", (e) => {
+            state.score = e.target.value || "";
+            render();
+            });
+
+            // Search
+            document.getElementById("q")?.addEventListener("input", (e) => {
+            state.q = e.target.value || "";
+            render();
+            });
+
+            // Signal chips
+            document.querySelectorAll(".chip[data-sig]").forEach(btn => {
+            setChipActive(btn, false);
+            btn.addEventListener("click", () => {
+                const sig = btn.dataset.sig;
+                const on = !state.sigs.includes(sig);
+                state.sigs = on ? [...state.sigs, sig] : state.sigs.filter(x => x !== sig);
+                setChipActive(btn, on);
+                render();
+            });
+            });
+
+            // Clear
+            document.getElementById("clearFilters")?.addEventListener("click", () => {
+            state = { bucket: "", score: "", q: "", sigs: [] };
+
+            ["b_all","b_green","b_yellow","b_red"].forEach(x => setChipActive(document.getElementById(x), false));
+            setChipActive(document.getElementById("b_all"), true);
+
+            const sf = document.getElementById("scoreFilter");
+            if (sf) sf.value = "";
+            const q = document.getElementById("q");
+            if (q) q.value = "";
+
+            document.querySelectorAll(".chip[data-sig]").forEach(btn => setChipActive(btn, false));
+
+            render();
+            });
+
           load();
         </script>
       `
