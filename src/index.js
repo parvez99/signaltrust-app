@@ -28,6 +28,7 @@ import {
   renderTrustReportPage,
   renderTrustProfilesPage,
   renderTrustProfilePage,
+  renderTrustSignalsPage,
   apiTrustIngest,
   apiTrustRun,
   apiTrustReport,
@@ -208,6 +209,8 @@ export default {
     if (path === "/trust/report" && request.method === "GET") return renderTrustReportPage(request, env);
     if (path === "/trust/profiles" && request.method === "GET") return renderTrustProfilesPage(request, env);
     if (path === "/trust/profile" && request.method === "GET") return renderTrustProfilePage(request, env);
+    if (path === "/trust/signals" && request.method === "GET") return renderTrustSignalsPage(request, env);
+    if (path === "/trust/api" && request.method === "GET") return renderTrustApiPage(request, env);
     if (path === "/api/trust/ingest" && request.method === "POST") return apiTrustIngest(request, env);
     if (path === "/api/trust/run" && request.method === "POST") return apiTrustRun(request, env);
     if (path === "/api/trust/report" && request.method === "GET") return apiTrustReport(request, env);

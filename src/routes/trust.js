@@ -9,6 +9,8 @@ import { defaultSignalConfigV1, runSignalsV1, signalTitle } from "../engine/sign
 import { scoreAndBucketV1 } from "../engine/scoring_v1.js";
 import { safeJsonParse } from "../lib/utils.js";
 import { sha256Hex, normalizeForDocHash } from "../lib/crypto.js";
+import { consoleShell } from "../lib/console_ui.js";
+
 
 export async function renderTrustHome(request, env) {
     const sess = await requireSession(request, env);
@@ -408,24 +410,26 @@ export async function renderTrustProfilesPage(request, env) {
     const allowed = isRecruiter(sess, env) || isAdmin(sess, env);
     if (!allowed) return new Response("Forbidden", { status: 403 });
   
-    const who = escapeHtml(sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter");
+    const who = escapeHtml(
+      sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter"
+    );
   
-    const html = pageShell({
-      title: "NextOffer — Trust Profiles",
-      rightPill: `Trust Engine • ${who}`,
+    const html = consoleShell({
+      title: "Profiles",
+      who,
+      active: "profiles",
       body: `
-        <div class="row" style="margin-top:14px;">
-          <a class="btn btn-ghost" href="/trust">← Trust Home</a>
-          <span class="spacer"></span>
-          <button class="btn" id="refresh" type="button">Refresh</button>
-          <button class="btn btn-ghost" id="logout" type="button">Logout</button>
-        </div>
+        <div class="card">
+          <div class="row" style="align-items:center;">
+            <div>
+              <div class="fine">Last 20 ingests</div>
+              <h2 style="margin:6px 0 0;">Profiles</h2>
+            </div>
+            <span class="spacer"></span>
+            <button class="btn" id="refresh" type="button">Refresh</button>
+          </div>
   
-        <div class="card" style="margin-top:14px;">
-          <div class="fine">Last 20 ingests</div>
-          <h2 style="margin:6px 0 0;">Profiles</h2>
           <div class="divider"></div>
-  
           <div id="list" class="fine">Loading…</div>
         </div>
   
@@ -457,28 +461,28 @@ export async function renderTrustProfilesPage(request, env) {
             return { error: await res.text() };
           }
   
-        function hasSignal(item, signalId) {
+          function hasSignal(item, signalId) {
             const ids = item?.latest_report?.signal_ids;
             return Array.isArray(ids) && ids.includes(signalId);
-        }
-
-        function row(item) {
+          }
+  
+          function row(item) {
             const latest = item.latest_report;
-
+  
             const dupPill = hasSignal(item, "duplicate_resume_upload")
-            ? pill("Duplicate upload", "rgba(245,158,11,.12)", "rgba(245,158,11,.28)", "#8a5a00")
-            : "";
-            
+              ? pill("Duplicate upload", "rgba(245,158,11,.12)", "rgba(245,158,11,.28)", "#8a5a00")
+              : "";
+  
             const latestHtml = latest
-            ? '<div class="row" style="gap:8px; flex-wrap:wrap;">' +
-                bucketBadge(latest.bucket) +
-                pill('Score: ' + latest.trust_score, "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
-                pill('Reports: ' + (item.report_count || 0), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
-                pill('Signals: ' + (latest.triggered_count || 0), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
-                (dupPill ? dupPill : "") +
-                pill('Uploads: ' + (item.ingest_count || 1), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
+              ? '<div class="row" style="gap:8px; flex-wrap:wrap;">' +
+                  bucketBadge(latest.bucket) +
+                  pill('Score: ' + latest.trust_score, "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
+                  pill('Reports: ' + (item.report_count || 0), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
+                  pill('Signals: ' + (latest.triggered_count || 0), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
+                  (dupPill ? dupPill : "") +
+                  pill('Uploads: ' + (item.ingest_count || 1), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
                 '</div>'
-            : '<div class="fine">No reports yet</div>';
+              : '<div class="fine">No reports yet</div>';
   
             return (
               '<div style="padding:12px; border:1px solid var(--border); border-radius:16px; background:rgba(255,255,255,.92); box-shadow:0 8px 20px rgba(11,18,32,.06);">' +
@@ -512,11 +516,6 @@ export async function renderTrustProfilesPage(request, env) {
           }
   
           document.getElementById("refresh").addEventListener("click", load);
-          document.getElementById('logout').addEventListener('click', async () => {
-            await fetch('/auth/logout', { method: 'POST' });
-            window.location.replace('/');
-          });
-  
           load();
         </script>
       `
@@ -526,6 +525,63 @@ export async function renderTrustProfilesPage(request, env) {
       headers: { "content-type": "text/html; charset=UTF-8", "cache-control": "no-store" },
     });
 }
+export async function renderTrustSignalsPage(request, env) {
+    const sess = await requireSession(request, env);
+    if (!sess) return redirect("/");
+  
+    const allowed = isRecruiter(sess, env) || isAdmin(sess, env);
+    if (!allowed) return new Response("Forbidden", { status: 403 });
+  
+    const who = escapeHtml(
+      sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter"
+    );
+  
+    const card = (id, name, tier, desc) => `
+      <div style="padding:14px; border:1px solid var(--border); border-radius:14px; background:rgba(255,255,255,.92); box-shadow:0 8px 20px rgba(11,18,32,.06);">
+        <div style="font-weight:900;">${escapeHtml(name)}</div>
+        <div class="fine">${escapeHtml(tier)} • <span style="font-family:ui-monospace;">${escapeHtml(id)}</span></div>
+        <div style="margin-top:8px; color:rgba(11,18,32,.72); line-height:1.5;">${escapeHtml(desc)}</div>
+      </div>
+    `;
+  
+    const html = consoleShell({
+      title: "Signals",
+      who,
+      active: "signals",
+      body: `
+        <div class="card">
+          <div class="fine">Signal catalog (MVP)</div>
+          <h2 style="margin:6px 0 0;">Signals</h2>
+          <div class="divider"></div>
+  
+          <div style="display:grid; grid-template-columns: 1fr; gap:10px;">
+            ${card("timeline_overlap", "Overlapping Roles", "Tier A", "Triggers when two roles overlap by >60 days. Hard triggers Red if high confidence.")}
+            ${card("gap_gt_6mo", "Unexplained Gap > 6 Months", "Tier B", "Triggers when there is a gap >180 days between roles with a known end date.")}
+            ${card("gap_after_edu_to_first_role", "Gap after education before first role", "Tier C", "Triggers when gap >180 days between latest education end and first role start.")}
+            ${card("duplicate_roles", "Duplicate Role Entries", "Tier B", "Triggers when repeated role-like dated lines appear in Experience section (format/copy-paste issue).")}
+            ${card("duplicate_resume_upload", "Duplicate Resume Upload (Cross-Upload)", "Tier B", "Triggers when doc_hash matches previously uploaded resume for same candidate.")}
+          </div>
+        </div>
+      `
+    });
+  
+    return new Response(html, {
+      headers: { "content-type": "text/html; charset=UTF-8", "cache-control": "no-store" },
+    });
+  }
+  
+  
+function signalCard(id, name, tier, desc) {
+    return `
+      <div style="padding:14px; border:1px solid var(--border); border-radius:14px;">
+        <div style="font-weight:800;">${name}</div>
+        <div class="fine">${tier}</div>
+        <div style="margin-top:6px;">${desc}</div>
+        <div style="margin-top:8px;" class="fine">Signal ID: ${id}</div>
+      </div>
+    `;
+}
+  
 
   // ---------------------------
   // 2) APIs
