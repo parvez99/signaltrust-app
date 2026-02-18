@@ -431,6 +431,78 @@ export async function renderTrustProfilesPage(request, env) {
   
           <div class="divider"></div>
           <style>
+            .filter-bar{
+            display:flex;
+            flex-wrap:wrap;
+            gap:10px;
+            align-items:flex-start;
+            justify-content:space-between;
+            margin-bottom:12px;
+            padding:10px;
+            border:1px solid var(--border);
+            border-radius:14px;
+            background:rgba(255,255,255,.86);
+            backdrop-filter: blur(6px);
+            }
+            .filter-left, .filter-right{
+            display:flex;
+            flex-wrap:wrap;
+            gap:10px;
+            align-items:center;
+            }
+            .filter-group{
+            display:flex;
+            align-items:center;
+            gap:6px;
+            flex-wrap:wrap;
+            }
+
+            .filter-label{
+            font-size:11px;
+            color:var(--muted);
+            font-weight:800;
+            letter-spacing:.3px;
+            margin-right:2px;
+            }
+
+            .filter-chip{
+            padding:5px 10px;          /* ✅ smaller */
+            border-radius:999px;
+            border:1px solid rgba(11,18,32,.10);
+            background:rgba(11,18,32,.02);
+            cursor:pointer;
+            font-size:12px;            /* ✅ smaller text */
+            font-weight:700;
+            line-height:1;
+            transition:all .12s ease;
+            user-select:none;
+            white-space:nowrap;
+            }
+
+            .filter-chip:hover{
+            background:rgba(0,170,170,.07);
+            border-color:rgba(0,170,170,.26);
+            transform: translateY(-1px); /* subtle “sleek” lift */
+            }
+
+            .filter-chip.active{
+            background:rgba(0,170,170,.14);
+            border-color:rgba(0,170,170,.36);
+            color:rgba(0,100,100,1);
+            }
+
+            .filter-summary {
+                margin-left: auto;
+                font-size: 12px;
+                color: var(--muted);
+            }
+            /* Search row tighter */
+            .filter-right label.fine{ margin-right:4px; }
+            #q{
+            height:32px;
+            padding:6px 10px;
+            border-radius:12px;
+            }
             .filters {
                 position: sticky;
                 top: 0;
@@ -472,47 +544,54 @@ export async function renderTrustProfilesPage(request, env) {
                 overflow: auto;
                 padding-right: 6px;
             }
+            /* Make Clear button match chip height */
+            #clearFilters.btn{
+            padding:7px 10px;
+            border-radius:12px;
+            }
+            #refresh.btn{
+            padding:7px 10px;
+            border-radius:12px;
+            }
           </style>
 
-            <div class="filters">
-            <div class="chiprow">
-                <span class="fine" style="min-width:60px;">Bucket</span>
-                <button class="chip" id="b_all" data-bucket="">All</button>
-                <button class="chip" id="b_green" data-bucket="green">Green</button>
-                <button class="chip" id="b_yellow" data-bucket="yellow">Yellow</button>
-                <button class="chip" id="b_red" data-bucket="red">Red</button>
+        <div class="filter-bar">
+            <div class="filter-left">
+                <div class="filter-group">
+                <span class="filter-label">Status</span>
+                <button class="filter-chip" data-filter="all">All</button>
+                <button class="filter-chip" data-filter="green">Green</button>
+                <button class="filter-chip" data-filter="yellow">Yellow</button>
+                <button class="filter-chip" data-filter="red">Red</button>
+                </div>
 
-                <span class="spacer"></span>
+                <div class="filter-group">
+                <span class="filter-label">Score</span>
+                <button class="filter-chip" data-filter="score80">≥ 80</button>
+                <button class="filter-chip" data-filter="hasSignals">Has signals</button>
+                <button class="filter-chip" data-filter="duplicateOnly">Duplicate</button>
+                </div>
 
-                <label class="fine">Score</label>
-                <select id="scoreFilter">
-                <option value="">Any</option>
-                <option value="80">≥ 80</option>
-                <option value="60">60–79</option>
-                <option value="0">< 60</option>
-                </select>
-
-                <label class="fine">Search</label>
-                <input id="q" type="text" placeholder="filename…" style="width:200px;" />
+                <div class="filter-group">
+                <span class="filter-label">Signals</span>
+                <button class="filter-chip" data-filter="duplicate_resume_upload">Duplicate upload</button>
+                <button class="filter-chip" data-filter="timeline_overlap">Overlap</button>
+                <button class="filter-chip" data-filter="gap_gt_6mo">Gap</button>
+                </div>
             </div>
 
-            <div class="chiprow" style="margin-top:10px;">
-                <span class="fine" style="min-width:60px;">Signals</span>
-                <button class="chip" data-sig="duplicate_resume_upload">Duplicate upload</button>
-                <button class="chip" data-sig="timeline_overlap">Overlap</button>
-                <button class="chip" data-sig="gap_gt_6mo">Gap</button>
+            <div class="filter-right">
+                <div class="filter-summary" id="filterSummary"></div>
 
-                <span class="spacer"></span>
+                <label class="fine" for="q">Search</label>
+                <input id="q" type="text" placeholder="filename…" style="width:200px;" />
                 <button class="btn btn-ghost" id="clearFilters" type="button">Clear</button>
             </div>
-            </div>
-
-            <div id="listWrap">
-            <div id="list" class="fine">Loading…</div>
-            </div>
-
         </div>
-  
+        <div id="listWrap">
+            <div id="list" class="fine">Loading…</div>
+        </div>
+
         <script>
           function esc(s) {
             return String(s || "")
@@ -580,119 +659,174 @@ export async function renderTrustProfilesPage(request, env) {
             );
           }
   
-            let allItems = [];
-            let state = { bucket: "", score: "", q: "", sigs: [] };
+        let allItems = [];
+        let state = {
+        bucket: "all",   // all | green | yellow | red
+        score: "",       // "" | "score80"
+        mode: "",        // "" | "hasSignals" | "duplicateOnly"
+        sigs: [],        // signal ids
+        q: ""
+        };
 
-            function setChipActive(el, on) {
-            if (!el) return;
-            el.dataset.active = on ? "1" : "0";
+        function setActive(btn, on) {
+        if (!btn) return;
+        btn.classList.toggle("active", !!on);
+        }
+
+        function updateSummary(shown, total) {
+            const el = document.getElementById("filterSummary");
+        if (!el) return;
+
+        const parts = [];
+
+        if (state.bucket && state.bucket !== "all") parts.push("Status: " + state.bucket);
+        if (state.score === "score80") parts.push("Score ≥ 80");
+        if (state.mode === "hasSignals") parts.push("Has signals");
+        if (state.mode === "duplicateOnly") parts.push("Duplicate");
+        if (state.sigs.length) parts.push("Signals: " + state.sigs.join(", "));
+        if (state.q) parts.push('Search: "' + state.q + '"');
+
+        el.textContent =
+            shown + "/" + total +
+            (parts.length ? " • " + parts.join(" • ") : "");
+        }
+
+
+        function applyFilters(items) {
+        const q = (state.q || "").toLowerCase().trim();
+
+        return items.filter(it => {
+            const latest = it.latest_report;
+            const bucket = String(latest?.bucket || "unknown");
+            const score = Number(latest?.trust_score || 0);
+            const sigIds = latest?.signal_ids || [];
+
+            // status
+            if (state.bucket !== "all" && bucket !== state.bucket) return false;
+
+            // score
+            if (state.score === "score80" && score < 80) return false;
+
+            // quick modes
+            if (state.mode === "hasSignals" && (!latest || Number(latest.triggered_count || 0) <= 0)) return false;
+            if (state.mode === "duplicateOnly" && !sigIds.includes("duplicate_resume_upload")) return false;
+
+            // signal chips (OR semantics)
+            if (state.sigs.length) {
+            const ok = state.sigs.some(s => sigIds.includes(s));
+            if (!ok) return false;
             }
 
-            function scorePass(latest, scoreMode) {
-            if (!latest) return false;
-            const s = Number(latest.trust_score || 0);
-            if (!scoreMode) return true;
-            if (scoreMode === "80") return s >= 80;
-            if (scoreMode === "60") return s >= 60 && s < 80;
-            if (scoreMode === "0") return s < 60;
+            // search
+            if (q && !String(it.filename || "").toLowerCase().includes(q)) return false;
+
             return true;
-            }
+        });
+        }
 
-            function hasAnySignal(item, sigs) {
-            if (!sigs.length) return true;
-            const ids = item?.latest_report?.signal_ids || [];
-            return sigs.some(x => ids.includes(x));
-            }
+        function render() {
+        const el = document.getElementById("list");
+        if (!el) return;
 
-            function applyFilters(items) {
-            const q = (state.q || "").toLowerCase().trim();
-            return items.filter(it => {
-                const latest = it.latest_report;
-                if (state.bucket && String(latest?.bucket || "") !== state.bucket) return false;
-                if (!scorePass(latest, state.score)) return false;
-                if (q && !String(it.filename || "").toLowerCase().includes(q)) return false;
-                if (!hasAnySignal(it, state.sigs)) return false;
-                return true;
-            });
-            }
+        const filtered = applyFilters(allItems);
+        el.innerHTML = filtered.length
+            ? '<div style="display:grid; grid-template-columns: 1fr; gap:10px;">' + filtered.map(row).join("") + '</div>'
+            : '<div class="fine">No matches.</div>';
 
-            function render() {
-            const el = document.getElementById("list");
-            const items = applyFilters(allItems);
-            el.innerHTML = items.length
-                ? '<div style="display:grid; grid-template-columns: 1fr; gap:10px;">' + items.map(row).join("") + '</div>'
-                : '<div class="fine">No matches.</div>';
-            }
+        updateSummary(filtered.length, allItems.length);
+        }
 
-            async function load() {
-            const el = document.getElementById("list");
-            el.textContent = "Loading…";
-            const res = await fetch("/api/trust/profiles");
-            const data = await readJson(res);
-            if (!res.ok) {
-                el.textContent = data.error || "Failed";
+        function bindFilters() {
+        // one handler for all chips
+        document.querySelectorAll(".filter-chip").forEach(btn => {
+            btn.addEventListener("click", () => {
+            const key = btn.dataset.filter;
+
+            // STATUS group
+            if (["all","green","yellow","red"].includes(key)) {
+                state.bucket = key;
+                // only one active in that group
+                document.querySelectorAll('.filter-chip[data-filter="all"],.filter-chip[data-filter="green"],.filter-chip[data-filter="yellow"],.filter-chip[data-filter="red"]')
+                .forEach(b => setActive(b, b.dataset.filter === key));
+                render();
                 return;
             }
-            allItems = data.items || [];
-            render();
+
+            // SCORE group
+            if (key === "score80") {
+                state.score = (state.score === "score80") ? "" : "score80";
+                setActive(btn, state.score === "score80");
+                render();
+                return;
             }
 
-  
-          document.getElementById("refresh").addEventListener("click", load);
-            // Bucket chips
-            ["b_all","b_green","b_yellow","b_red"].forEach(id => {
-            const btn = document.getElementById(id);
-            btn?.addEventListener("click", () => {
-                state.bucket = btn.dataset.bucket || "";
-                ["b_all","b_green","b_yellow","b_red"].forEach(x => setChipActive(document.getElementById(x), false));
-                setChipActive(btn, true);
+            // MODE group
+            if (key === "hasSignals" || key === "duplicateOnly") {
+                state.mode = (state.mode === key) ? "" : key;
+                // make them mutually exclusive visually
+                document.querySelectorAll('.filter-chip[data-filter="hasSignals"],.filter-chip[data-filter="duplicateOnly"]')
+                .forEach(b => setActive(b, state.mode === b.dataset.filter));
                 render();
-            });
-            });
-            setChipActive(document.getElementById("b_all"), true);
+                return;
+            }
 
-            // Score dropdown
-            document.getElementById("scoreFilter")?.addEventListener("change", (e) => {
-            state.score = e.target.value || "";
-            render();
+            // SIGNAL ids (multi-select)
+            const isSignalId = key && key.includes("_"); // simple heuristic
+            if (isSignalId) {
+                const on = state.sigs.includes(key);
+                state.sigs = on ? state.sigs.filter(x => x !== key) : [...state.sigs, key];
+                setActive(btn, !on);
+                render();
+                return;
+            }
             });
+        });
 
-            // Search
-            document.getElementById("q")?.addEventListener("input", (e) => {
+        // default active: All
+        const allBtn = document.querySelector('.filter-chip[data-filter="all"]');
+        setActive(allBtn, true);
+
+        // search box
+        document.getElementById("q")?.addEventListener("input", (e) => {
             state.q = e.target.value || "";
             render();
-            });
+        });
 
-            // Signal chips
-            document.querySelectorAll(".chip[data-sig]").forEach(btn => {
-            setChipActive(btn, false);
-            btn.addEventListener("click", () => {
-                const sig = btn.dataset.sig;
-                const on = !state.sigs.includes(sig);
-                state.sigs = on ? [...state.sigs, sig] : state.sigs.filter(x => x !== sig);
-                setChipActive(btn, on);
-                render();
-            });
-            });
+        // clear button
+        document.getElementById("clearFilters")?.addEventListener("click", () => {
+            state = { bucket: "all", score: "", mode: "", sigs: [], q: "" };
 
-            // Clear
-            document.getElementById("clearFilters")?.addEventListener("click", () => {
-            state = { bucket: "", score: "", q: "", sigs: [] };
+            // reset chip visuals
+            document.querySelectorAll(".filter-chip").forEach(b => setActive(b, false));
+            setActive(document.querySelector('.filter-chip[data-filter="all"]'), true);
 
-            ["b_all","b_green","b_yellow","b_red"].forEach(x => setChipActive(document.getElementById(x), false));
-            setChipActive(document.getElementById("b_all"), true);
-
-            const sf = document.getElementById("scoreFilter");
-            if (sf) sf.value = "";
             const q = document.getElementById("q");
             if (q) q.value = "";
 
-            document.querySelectorAll(".chip[data-sig]").forEach(btn => setChipActive(btn, false));
-
             render();
-            });
+        });
+        }
 
-          load();
+        async function load() {
+        const el = document.getElementById("list");
+        if (!el) return;
+        el.textContent = "Loading…";
+
+        const res = await fetch("/api/trust/profiles");
+        const data = await readJson(res);
+        if (!res.ok) {
+            el.textContent = data.error || "Failed";
+            return;
+        }
+        allItems = data.items || [];
+        render();
+        }
+
+        // keep your refresh handler
+        document.getElementById("refresh")?.addEventListener("click", load);
+
+        bindFilters();
+        load();
         </script>
       `
     });
