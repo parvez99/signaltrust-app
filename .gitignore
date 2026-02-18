@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.tmp/
+.wrangler/
+.dev.vars
+.env
+.env.*
+*.log
+.DS_Store
+
+# Cloudflare / Workers
+wrangler.toml.local

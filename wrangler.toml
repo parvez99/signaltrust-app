@@ -1,0 +1,16 @@
+name = "getnextoffer"
+main = "src/index.js"
+compatibility_date = "2026-02-06"
+account_id = "60633ceb40b038684295dc8f39f9aae1"
+assets = { directory = "./public", binding = "ASSETS" }
+
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nextoffer-db"
+database_id = "46107211-1fbe-49ab-b371-b8aab5be7deb"
+
+[vars]
+ADMIN_TOKEN = "58b869980c5150ba580abcf64209f0e20e3eb56b91137ad0"
+ADMIN_EMAILS = "always.learner99@gmail.com"
+RECRUITER_EMAILS="threeflagsfamily@gmail.com,mulani.marina@gmail.com,irfanmulani1@gmail.com"
