@@ -59,10 +59,22 @@ export function consoleShell({ title, who, active = "profiles", body = "" }) {
           border-color: rgba(11,18,32,.08);
         }
         .nav-item.active {
-          background: rgba(12,122,75,.10);
-          border-color: rgba(12,122,75,.25);
-          color: #0c7a4b;
-          font-weight: 800;
+            background: rgba(0,170,170,.14);   /* Tropea Sea */
+            border-color: rgba(0,170,170,.35);
+            color: rgba(0,120,120,1);
+            font-weight: 800;
+        }
+        /* Tropea buttons (primary actions) */
+        .btn {
+            background: rgba(0,170,170,.14);
+            border: 1px solid rgba(0,170,170,.35);
+            color: rgba(0,120,120,1);
+            font-weight: 800;
+            transition: all .15s ease;
+        }
+        .btn:hover {
+            background: rgba(0,170,170,.22);
+            border-color: rgba(0,170,170,.50);
         }
         .content { min-width: 0; }
         .topbar {
@@ -85,6 +97,33 @@ export function consoleShell({ title, who, active = "profiles", body = "" }) {
             font-weight: 900;
             letter-spacing: .2px;
             margin-bottom: 10px;
+        }
+        .btn {
+            background: rgba(0,170,170,.14);
+            border: 1px solid rgba(0,170,170,.35);
+            color: rgba(0,120,120,1);
+            font-weight: 800;
+            transition: all .15s ease;
+        }
+        .btn:hover {
+            background: rgba(0,170,170,.22);
+            border-color: rgba(0,170,170,.5);
+        }
+        /* Ghost buttons stay neutral */
+        .btn-ghost {
+            background: rgba(11,18,32,.04);
+            border: 1px solid rgba(11,18,32,.08);
+            color: rgba(11,18,32,.75);
+        }
+        .btn-ghost:hover {
+            background: rgba(11,18,32,.08);
+        }
+        .btn-primary {
+            background: rgba(0,170,170,.22);
+            border-color: rgba(0,170,170,.55);
+        }
+        .btn-primary:hover {
+            background: rgba(0,170,170,.32);
         }
       </style>
 
@@ -110,7 +149,7 @@ export function consoleShell({ title, who, active = "profiles", body = "" }) {
             <div class="topbar">
                 <div class="fine">${escapeHtml(title || "")}</div>
                 <span class="spacer"></span>
-                <a class="btn btn-ghost" href="/trust">Upload</a>
+                <a class="btn btn-primary" href="/trust">Upload</a>
             </div>
 
             ${body}
