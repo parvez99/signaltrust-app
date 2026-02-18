@@ -420,75 +420,125 @@ export async function renderTrustProfilesPage(request, env) {
       active: "profiles",
       body: `
         <div class="card">
-          <div class="row" style="align-items:center;">
+            <div class="row" style="align-items:center;">
             <div>
-              <div class="fine">Last 20 ingests</div>
-              <h2 style="margin:6px 0 0;">Profiles</h2>
+                <div class="fine">Last 20 ingests</div>
+                <h2 style="margin:6px 0 0;">Profiles</h2>
             </div>
             <span class="spacer"></span>
-            <button class="btn" id="refresh" type="button">Refresh</button>
-          </div>
+
+            <div class="row" style="gap:8px;">
+                <a class="btn" href="/trust">Upload</a>
+                <button class="btn" id="refresh" type="button">Refresh</button>
+            </div>
+            </div>
   
           <div class="divider"></div>
           <style>
-            .filter-bar{
-            display:flex;
-            flex-wrap:wrap;
-            gap:10px;
-            align-items:flex-start;
-            justify-content:space-between;
-            margin-bottom:12px;
-            padding:10px;
-            border:1px solid var(--border);
-            border-radius:14px;
-            background:rgba(255,255,255,.86);
-            backdrop-filter: blur(6px);
+            .bucket-row{
+                display:grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 10px;
+                margin: 10px 0 12px;
             }
+
+            .bucket-card{
+                text-align:left;
+                border: 1px solid var(--border);
+                background: rgba(255,255,255,.9);
+                border-radius: 14px;
+                padding: 10px 12px;
+                cursor: pointer;
+                box-shadow: 0 6px 16px rgba(11,18,32,.05);
+                transition: transform .12s ease, border-color .12s ease, background .12s ease;
+            }
+
+            .bucket-card:hover{
+                transform: translateY(-1px);
+                border-color: rgba(0,170,170,.35);
+            }
+
+            .bucket-card[data-active="1"]{
+                background: rgba(0,170,170,.10);
+                border-color: rgba(0,170,170,.45);
+            }
+
+            .bucket-title{
+                font-size: 12px;
+                font-weight: 800;
+                color: rgba(11,18,32,.70);
+                letter-spacing: .2px;
+            }
+
+            .bucket-count{
+                margin-top: 4px;
+                font-size: 18px;
+                font-weight: 900;
+                color: rgba(11,18,32,.92);
+            }
+
+            @media (max-width: 900px){
+            .bucket-row{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            }
+
+            .filter-bar{
+                display:flex;
+                flex-wrap:wrap;
+                gap:10px;
+                align-items:flex-start;
+                justify-content:space-between;
+                margin-bottom:12px;
+                padding:10px;
+                border:1px solid var(--border);
+                border-radius:14px;
+                background:rgba(255,255,255,.86);
+                backdrop-filter: blur(6px);
+                }
             .filter-left, .filter-right{
-            display:flex;
-            flex-wrap:wrap;
-            gap:10px;
-            align-items:center;
+                display:flex;
+                flex-wrap:wrap;
+                gap:10px;
+                align-items:center;
             }
             .filter-group{
-            display:flex;
-            align-items:center;
-            gap:6px;
-            flex-wrap:wrap;
+                display:flex;
+                align-items:center;
+                gap:6px;
+                flex-wrap:wrap;
             }
 
             .filter-label{
-            font-size:11px;
-            color:var(--muted);
-            font-weight:800;
-            letter-spacing:.3px;
-            margin-right:2px;
+                font-size:11px;
+                color:var(--muted);
+                font-weight:800;
+                letter-spacing:.3px;
+                margin-right:2px;
             }
 
             .filter-chip{
-            padding:5px 10px;          /* ✅ smaller */
-            border-radius:999px;
-            border:1px solid rgba(11,18,32,.10);
-            background:rgba(11,18,32,.02);
-            cursor:pointer;
-            font-size:12px;            /* ✅ smaller text */
-            font-weight:700;
-            line-height:1;
-            transition:all .12s ease;
-            user-select:none;
-            white-space:nowrap;
+                padding:5px 10px;          /* ✅ smaller */
+                border-radius:999px;
+                border:1px solid rgba(11,18,32,.10);
+                background:rgba(11,18,32,.02);
+                cursor:pointer;
+                font-size:12px;            /* ✅ smaller text */
+                font-weight:700;
+                line-height:1;
+                transition:all .12s ease;
+                user-select:none;
+                white-space:nowrap;
             }
 
             .filter-chip:hover{
-            background:rgba(0,170,170,.07);
-            border-color:rgba(0,170,170,.26);
-            transform: translateY(-1px); /* subtle “sleek” lift */
+                background:rgba(0,170,170,.07);
+                border-color:rgba(0,170,170,.26);
+                transform: translateY(-1px); /* subtle “sleek” lift */
             }
 
             .filter-chip.active{
-            background:rgba(0,170,170,.14);
-            border-color:rgba(0,170,170,.36);
-            color:rgba(0,100,100,1);
+                background:rgba(0,170,170,.14);
+                border-color:rgba(0,170,170,.36);
+                color:rgba(0,100,100,1);
             }
 
             .filter-summary {
@@ -499,9 +549,9 @@ export async function renderTrustProfilesPage(request, env) {
             /* Search row tighter */
             .filter-right label.fine{ margin-right:4px; }
             #q{
-            height:32px;
-            padding:6px 10px;
-            border-radius:12px;
+                height:32px;
+                padding:6px 10px;
+                border-radius:12px;
             }
             .filters {
                 position: sticky;
@@ -546,23 +596,37 @@ export async function renderTrustProfilesPage(request, env) {
             }
             /* Make Clear button match chip height */
             #clearFilters.btn{
-            padding:7px 10px;
-            border-radius:12px;
+                padding:7px 10px;
+                border-radius:12px;
             }
             #refresh.btn{
-            padding:7px 10px;
-            border-radius:12px;
+                padding:7px 10px;
+                border-radius:12px;
             }
           </style>
 
         <div class="filter-bar">
             <div class="filter-left">
-                <div class="filter-group">
-                <span class="filter-label">Status</span>
-                <button class="filter-chip" data-filter="all">All</button>
-                <button class="filter-chip" data-filter="green">Green</button>
-                <button class="filter-chip" data-filter="yellow">Yellow</button>
-                <button class="filter-chip" data-filter="red">Red</button>
+                <div class="bucket-row" id="bucketRow">
+                <button class="bucket-card" data-bucket="all">
+                    <div class="bucket-title">All Profiles</div>
+                    <div class="bucket-count" id="countAll">—</div>
+                </button>
+
+                <button class="bucket-card" data-bucket="green">
+                    <div class="bucket-title">Green</div>
+                    <div class="bucket-count" id="countGreen">—</div>
+                </button>
+
+                <button class="bucket-card" data-bucket="yellow">
+                    <div class="bucket-title">Yellow</div>
+                    <div class="bucket-count" id="countYellow">—</div>
+                </button>
+
+                <button class="bucket-card" data-bucket="red">
+                    <div class="bucket-title">Red</div>
+                    <div class="bucket-count" id="countRed">—</div>
+                </button>
                 </div>
 
                 <div class="filter-group">
@@ -606,6 +670,25 @@ export async function renderTrustProfilesPage(request, env) {
             return '<span class="pill" style="background:'+bg+'; border-color:'+bd+'; color:'+ink+';">' + text + '</span>';
           }
   
+            function computeCounts(items) {
+            const counts = { all: items.length, green: 0, yellow: 0, red: 0 };
+            for (const it of items) {
+                const b = String(it?.latest_report?.bucket || "");
+                if (b === "green") counts.green++;
+                else if (b === "yellow") counts.yellow++;
+                else if (b === "red") counts.red++;
+            }
+            return counts;
+            }
+
+            function setActiveBucket(bucket) {
+            state.bucket = bucket === "all" ? "" : bucket;
+            document.querySelectorAll(".bucket-card").forEach(btn => {
+                btn.dataset.active = (btn.dataset.bucket === bucket) ? "1" : "0";
+            });
+            render();
+            }
+
           function bucketBadge(bucket) {
             const b = String(bucket || "unknown");
             if (b === "green") return pill("Green", "rgba(12,122,75,.10)", "rgba(12,122,75,.25)", "#0c7a4b");
@@ -819,17 +902,29 @@ export async function renderTrustProfilesPage(request, env) {
             return;
         }
         allItems = data.items || [];
+        const c = computeCounts(allItems);
+        document.getElementById("countAll").textContent = String(c.all);
+        document.getElementById("countGreen").textContent = String(c.green);
+        document.getElementById("countYellow").textContent = String(c.yellow);
+        document.getElementById("countRed").textContent = String(c.red);
         render();
         }
+        
+        document.querySelectorAll(".bucket-card").forEach(btn => {
+        btn.addEventListener("click", () => setActiveBucket(btn.dataset.bucket));
+        });
 
-        // keep your refresh handler
-        document.getElementById("refresh")?.addEventListener("click", load);
+        // default active
+        setActiveBucket("all");
 
-        bindFilters();
-        load();
-        </script>
-      `
-    });
+                // keep your refresh handler
+                document.getElementById("refresh")?.addEventListener("click", load);
+
+                bindFilters();
+                load();
+                </script>
+            `
+            });
   
     return new Response(html, {
       headers: { "content-type": "text/html; charset=UTF-8", "cache-control": "no-store" },
