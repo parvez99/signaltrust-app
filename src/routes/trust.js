@@ -428,8 +428,8 @@ export async function renderTrustProfilesPage(request, env) {
             <span class="spacer"></span>
 
             <div class="row" style="gap:8px;">
-                <a class="btn" href="/trust">Upload</a>
-                <button class="btn" id="refresh" type="button">Refresh</button>
+                <a class="btn btn-sm" href="/trust">Upload</a>
+                <button class="btn btn-sm" id="refresh" type="button">Refresh</button>
             </div>
             </div>
   
@@ -441,18 +441,11 @@ export async function renderTrustProfilesPage(request, env) {
                 gap: 10px;
                 margin: 10px 0 12px;
             }
-
+            /* Buckets slightly smaller */
             .bucket-card{
-                text-align:left;
-                border: 1px solid var(--border);
-                background: rgba(255,255,255,.9);
                 border-radius: 14px;
-                padding: 10px 12px;
-                cursor: pointer;
-                box-shadow: 0 6px 16px rgba(11,18,32,.05);
-                transition: transform .12s ease, border-color .12s ease, background .12s ease;
+                padding: 9px 11px;       /* smaller */
             }
-
             .bucket-card:hover{
                 transform: translateY(-1px);
                 border-color: rgba(0,170,170,.35);
@@ -462,130 +455,52 @@ export async function renderTrustProfilesPage(request, env) {
                 background: rgba(0,170,170,.10);
                 border-color: rgba(0,170,170,.45);
             }
-
-            .bucket-title{
-                font-size: 12px;
-                font-weight: 800;
-                color: rgba(11,18,32,.70);
-                letter-spacing: .2px;
-            }
-
-            .bucket-count{
-                margin-top: 4px;
-                font-size: 18px;
-                font-weight: 900;
-                color: rgba(11,18,32,.92);
-            }
+            .bucket-title{ font-size: 11px; }
+            .bucket-count{ font-size: 17px; }
 
             @media (max-width: 900px){
             .bucket-row{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
             }
 
+            /* Layout: left controls + right search */
             .filter-bar{
                 display:flex;
-                flex-wrap:wrap;
-                gap:10px;
+                gap:14px;
                 align-items:flex-start;
                 justify-content:space-between;
+                flex-wrap:wrap;
                 margin-bottom:12px;
                 padding:10px;
                 border:1px solid var(--border);
                 border-radius:14px;
                 background:rgba(255,255,255,.86);
                 backdrop-filter: blur(6px);
-                }
-            .filter-left, .filter-right{
+            }
+            .filter-leftcol{
+                display:flex;
+                flex-direction:column;
+                gap:10px;
+                min-width: 520px;
+                flex: 1 1 520px;
+            }
+            .filter-rightcol{
+                display:flex;
+                justify-content:flex-end;
+                flex: 0 1 360px;
+                min-width: 300px;
+            }
+            .filter-left{
                 display:flex;
                 flex-wrap:wrap;
                 gap:10px;
                 align-items:center;
             }
-            .filter-group{
-                display:flex;
-                align-items:center;
-                gap:6px;
-                flex-wrap:wrap;
-            }
-
-            .filter-label{
-                font-size:11px;
-                color:var(--muted);
-                font-weight:800;
-                letter-spacing:.3px;
-                margin-right:2px;
-            }
-
-            .filter-chip{
-                padding:5px 10px;          /* ✅ smaller */
-                border-radius:999px;
-                border:1px solid rgba(11,18,32,.10);
-                background:rgba(11,18,32,.02);
-                cursor:pointer;
-                font-size:12px;            /* ✅ smaller text */
-                font-weight:700;
-                line-height:1;
-                transition:all .12s ease;
-                user-select:none;
-                white-space:nowrap;
-            }
-
-            .filter-chip:hover{
-                background:rgba(0,170,170,.07);
-                border-color:rgba(0,170,170,.26);
-                transform: translateY(-1px); /* subtle “sleek” lift */
-            }
-
-            .filter-chip.active{
-                background:rgba(0,170,170,.14);
-                border-color:rgba(0,170,170,.36);
-                color:rgba(0,100,100,1);
-            }
-
-            .filter-summary {
-                margin-left: auto;
-                font-size: 12px;
-                color: var(--muted);
-            }
             /* Search row tighter */
-            .filter-right label.fine{ margin-right:4px; }
             #q{
-                height:32px;
+                height:30px;
                 padding:6px 10px;
                 border-radius:12px;
-            }
-            .filters {
-                position: sticky;
-                top: 0;
-                z-index: 5;
-                background: rgba(255,255,255,.92);
-                backdrop-filter: blur(6px);
-                border: 1px solid var(--border);
-                border-radius: 16px;
-                padding: 10px;
-                box-shadow: 0 8px 20px rgba(11,18,32,.06);
-                margin-bottom: 10px;
-            }
-            .chiprow { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-            .chip {
-                border: 1px solid var(--border);
-                background: rgba(11,18,32,.03);
-                color: rgba(11,18,32,.82);
-                padding: 8px 10px;
-                border-radius: 999px;
-                cursor: pointer;
-                font-weight: 700;
-                user-select: none;
-            }
-            .chip[data-active="1"]{
-                background: rgba(0, 170, 170, .14);    /* Tropea Sea-ish */
-                border-color: rgba(0, 170, 170, .35);
-                color: rgba(0, 100, 100, 1);
-            }
-            .filters input, .filters select {
-                border: 1px solid var(--border);
-                border-radius: 12px;
-                padding: 8px 10px;
-                background: rgba(255,255,255,.9);
+                width: 220px;
             }
 
             /* ✅ make the list itself scroll */
@@ -603,55 +518,170 @@ export async function renderTrustProfilesPage(request, env) {
                 padding:7px 10px;
                 border-radius:12px;
             }
+            .filters2 { margin-top: 8px; }
+
+            /* Search tighter and right-aligned */
+            .searchbox{
+                display:flex;
+                align-items:center;
+                justify-content:flex-end;
+                gap:10px;
+                flex-wrap:wrap;
+            }
+            .searchbox input{
+                width: 220px;
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 8px 10px;
+                background: rgba(255,255,255,.9);
+            }
+
+            .filter-pill-row{
+                display:flex;
+                gap:8px;
+                align-items:center;
+                flex-wrap:wrap;
+                margin-bottom: 8px;
+            }
+            /* +Filter buttons slightly smaller */
+            .filter-pill{
+                padding: 6px 10px;       /* smaller */
+                font-size: 12px;
+            }
+            .filter-pill:hover{
+                background: rgba(0,170,170,.08);
+                border-color: rgba(0,170,170,.30);
+            }
+
+            .filter-panel{
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                padding: 10px;
+                background: rgba(255,255,255,.92);
+                box-shadow: 0 8px 20px rgba(11,18,32,.06);
+                margin: 6px 0 10px;
+            }
+            .panel-title{
+                font-size: 12px;
+                font-weight: 900;
+                color: rgba(11,18,32,.65);
+                margin-bottom: 8px;
+            }
+            .panel-row{
+                display:flex;
+                flex-wrap:wrap;
+                gap:8px;
+            }
+            /* Mini chips slightly smaller */
+            .mini-chip{
+              padding: 5px 10px;
+              font-size: 12px;
+            }
+            .mini-chip:hover{
+                background: rgba(0,170,170,.08);
+                border-color: rgba(0,170,170,.30);
+            }
+            .mini-chip[data-active="1"]{
+                background: rgba(0,170,170,.14);
+                border-color: rgba(0,170,170,.40);
+                color: rgba(0,110,110,1);
+            }
+            .active-filters{
+                display:flex;
+                flex-wrap:wrap;
+                gap:8px;
+                margin: 6px 0 10px;
+            }
+            .active-chip{
+                display:inline-flex;
+                align-items:center;
+                gap:8px;
+                border:1px solid rgba(0,170,170,.35);
+                background: rgba(0,170,170,.10);
+                color: rgba(0,110,110,1);
+                padding: 6px 10px;
+                border-radius: 999px;
+                font-weight: 900;
+                cursor: pointer;
+                }
+                .active-chip .x{
+                font-weight: 900;
+                opacity: .8;
+            }
+            .active-chip:hover{
+                background: rgba(0,170,170,.16);
+            }
+
           </style>
+            <div class="filter-bar">
+                <!-- LEFT: buckets + filter controls -->
+                <div class="filter-leftcol">
+                    <div class="bucket-row" id="bucketRow">
+                    <button class="bucket-card" data-bucket="all" type="button">
+                        <div class="bucket-title">All Profiles</div>
+                        <div class="bucket-count" id="countAll">—</div>
+                    </button>
 
-        <div class="filter-bar">
-            <div class="filter-left">
-                <div class="bucket-row" id="bucketRow">
-                <button class="bucket-card" data-bucket="all">
-                    <div class="bucket-title">All Profiles</div>
-                    <div class="bucket-count" id="countAll">—</div>
-                </button>
+                    <button class="bucket-card" data-bucket="green" type="button">
+                        <div class="bucket-title">Green</div>
+                        <div class="bucket-count" id="countGreen">—</div>
+                    </button>
 
-                <button class="bucket-card" data-bucket="green">
-                    <div class="bucket-title">Green</div>
-                    <div class="bucket-count" id="countGreen">—</div>
-                </button>
+                    <button class="bucket-card" data-bucket="yellow" type="button">
+                        <div class="bucket-title">Yellow</div>
+                        <div class="bucket-count" id="countYellow">—</div>
+                    </button>
 
-                <button class="bucket-card" data-bucket="yellow">
-                    <div class="bucket-title">Yellow</div>
-                    <div class="bucket-count" id="countYellow">—</div>
-                </button>
+                    <button class="bucket-card" data-bucket="red" type="button">
+                        <div class="bucket-title">Red</div>
+                        <div class="bucket-count" id="countRed">—</div>
+                    </button>
+                    </div>
 
-                <button class="bucket-card" data-bucket="red">
-                    <div class="bucket-title">Red</div>
-                    <div class="bucket-count" id="countRed">—</div>
-                </button>
+                    <!-- +Filters directly under buckets -->
+                    <div class="filter-pill-row">
+                    <button class="filter-pill" id="openScore" type="button">+ Score</button>
+                    <button class="filter-pill" id="openSignals" type="button">+ Signals</button>
+                    <button class="filter-pill" id="openMore" type="button">+ More</button>
+                    </div>
+
+                    <div class="active-filters" id="activeFilters"></div>
+
+                    <div class="filter-panel" id="panelScore" style="display:none;">
+                    <div class="panel-title">Score</div>
+                    <div class="panel-row">
+                        <button class="mini-chip" data-score="score80" type="button">≥ 80</button>
+                        <button class="mini-chip" data-mode="hasSignals" type="button">Has signals</button>
+                        <button class="mini-chip" data-mode="duplicateOnly" type="button">Duplicate</button>
+                    </div>
+                    </div>
+
+                    <div class="filter-panel" id="panelSignals" style="display:none;">
+                    <div class="panel-title">Signals</div>
+                    <div class="panel-row">
+                        <button class="mini-chip" data-sig="duplicate_resume_upload" type="button">Duplicate upload</button>
+                        <button class="mini-chip" data-sig="timeline_overlap" type="button">Overlap</button>
+                        <button class="mini-chip" data-sig="gap_gt_6mo" type="button">Gap</button>
+                    </div>
+                    </div>
+
+                    <div class="filter-panel" id="panelMore" style="display:none;">
+                    <div class="panel-title">More filters</div>
+                    <div class="fine">Reserved for dates, owner, tags, etc. (later)</div>
+                    </div>
                 </div>
 
-                <div class="filter-group">
-                <span class="filter-label">Score</span>
-                <button class="filter-chip" data-filter="score80">≥ 80</button>
-                <button class="filter-chip" data-filter="hasSignals">Has signals</button>
-                <button class="filter-chip" data-filter="duplicateOnly">Duplicate</button>
+                <!-- RIGHT: search -->
+                <div class="filter-rightcol">
+                    <div class="searchbox">
+                    <span class="fine" id="filterSummary">0/0</span>
+                    <span class="fine">Search</span>
+                    <input id="q" type="text" placeholder="filename…" />
+                    <button class="btn btn-ghost btn-sm" id="clearFilters" type="button">Clear</button>
+                    </div>
                 </div>
-
-                <div class="filter-group">
-                <span class="filter-label">Signals</span>
-                <button class="filter-chip" data-filter="duplicate_resume_upload">Duplicate upload</button>
-                <button class="filter-chip" data-filter="timeline_overlap">Overlap</button>
-                <button class="filter-chip" data-filter="gap_gt_6mo">Gap</button>
-                </div>
-            </div>
-
-            <div class="filter-right">
-                <div class="filter-summary" id="filterSummary"></div>
-
-                <label class="fine" for="q">Search</label>
-                <input id="q" type="text" placeholder="filename…" style="width:200px;" />
-                <button class="btn btn-ghost" id="clearFilters" type="button">Clear</button>
-            </div>
-        </div>
+            </div> <!-- END of FILTER Group -->
+        </div> <!-- END of BODY -->
         <div id="listWrap">
             <div id="list" class="fine">Loading…</div>
         </div>
@@ -682,12 +712,13 @@ export async function renderTrustProfilesPage(request, env) {
             }
 
             function setActiveBucket(bucket) {
-            state.bucket = bucket === "all" ? "" : bucket;
+            state.bucket = bucket || "all";
             document.querySelectorAll(".bucket-card").forEach(btn => {
-                btn.dataset.active = (btn.dataset.bucket === bucket) ? "1" : "0";
+                btn.dataset.active = (btn.dataset.bucket === state.bucket) ? "1" : "0";
             });
             render();
             }
+
 
           function bucketBadge(bucket) {
             const b = String(bucket || "unknown");
@@ -697,6 +728,65 @@ export async function renderTrustProfilesPage(request, env) {
             return pill(b, "rgba(11,18,32,.06)", "var(--border)", "var(--muted)");
           }
   
+        function togglePanel(id) {
+            const panels = ["panelScore", "panelSignals", "panelMore"];
+            for (const p of panels) {
+                const el = document.getElementById(p);
+                if (!el) continue;
+                el.style.display = (p === id && el.style.display === "none") ? "block" : "none";
+            }
+            }
+
+            function renderActiveFilters() {
+            const el = document.getElementById("activeFilters");
+            if (!el) return;
+
+            const chips = [];
+
+            if (state.score === "score80") chips.push({ key:"score80", label:"Score ≥ 80", onRemove: () => { state.score=""; }});
+            if (state.mode === "hasSignals") chips.push({ key:"hasSignals", label:"Has signals", onRemove: () => { state.mode=""; }});
+            if (state.mode === "duplicateOnly") chips.push({ key:"duplicateOnly", label:"Duplicate", onRemove: () => { state.mode=""; }});
+
+            for (const sig of (state.sigs || [])) {
+                chips.push({ key:"sig:"+sig, label:sig, onRemove: () => { state.sigs = state.sigs.filter(x => x !== sig); }});
+            }
+
+            el.innerHTML = chips.map(c =>
+            '<button class="active-chip" data-k="' + esc(c.key) + '" type="button">' +
+                esc(c.label) + ' <span class="x">×</span>' +
+            '</button>'
+            ).join("");
+
+            // attach handlers
+            el.querySelectorAll(".active-chip").forEach(btn => {
+                btn.addEventListener("click", () => {
+                const k = btn.getAttribute("data-k") || "";
+                const chip = chips.find(x => x.key === k);
+                chip?.onRemove?.();
+                syncMiniChipStates();
+                render();
+                });
+            });
+            }
+
+            function syncMiniChipStates() {
+            // score chips
+            document.querySelectorAll('.mini-chip[data-score]').forEach(b => {
+                b.dataset.active = (b.dataset.score === state.score) ? "1" : "0";
+            });
+            // mode chips
+            document.querySelectorAll('.mini-chip[data-mode]').forEach(b => {
+                b.dataset.active = (b.dataset.mode === state.mode) ? "1" : "0";
+            });
+            // signal chips
+            document.querySelectorAll('.mini-chip[data-sig]').forEach(b => {
+                const sig = b.dataset.sig;
+                b.dataset.active = (state.sigs || []).includes(sig) ? "1" : "0";
+            });
+
+            renderActiveFilters();
+        }
+
           async function readJson(res) {
             const ct = res.headers.get("content-type") || "";
             if (ct.includes("application/json")) return await res.json();
@@ -751,30 +841,6 @@ export async function renderTrustProfilesPage(request, env) {
         q: ""
         };
 
-        function setActive(btn, on) {
-        if (!btn) return;
-        btn.classList.toggle("active", !!on);
-        }
-
-        function updateSummary(shown, total) {
-            const el = document.getElementById("filterSummary");
-        if (!el) return;
-
-        const parts = [];
-
-        if (state.bucket && state.bucket !== "all") parts.push("Status: " + state.bucket);
-        if (state.score === "score80") parts.push("Score ≥ 80");
-        if (state.mode === "hasSignals") parts.push("Has signals");
-        if (state.mode === "duplicateOnly") parts.push("Duplicate");
-        if (state.sigs.length) parts.push("Signals: " + state.sigs.join(", "));
-        if (state.q) parts.push('Search: "' + state.q + '"');
-
-        el.textContent =
-            shown + "/" + total +
-            (parts.length ? " • " + parts.join(" • ") : "");
-        }
-
-
         function applyFilters(items) {
         const q = (state.q || "").toLowerCase().trim();
 
@@ -809,85 +875,15 @@ export async function renderTrustProfilesPage(request, env) {
 
         function render() {
         const el = document.getElementById("list");
-        if (!el) return;
-
-        const filtered = applyFilters(allItems);
-        el.innerHTML = filtered.length
-            ? '<div style="display:grid; grid-template-columns: 1fr; gap:10px;">' + filtered.map(row).join("") + '</div>'
+        const items = applyFilters(allItems);
+        el.innerHTML = items.length
+            ? '<div style="display:grid; grid-template-columns: 1fr; gap:10px;">' + items.map(row).join("") + '</div>'
             : '<div class="fine">No matches.</div>';
 
-        updateSummary(filtered.length, allItems.length);
-        }
+        const s = document.getElementById("filterSummary");
+        if (s) s.textContent = items.length + "/" + allItems.length;
 
-        function bindFilters() {
-        // one handler for all chips
-        document.querySelectorAll(".filter-chip").forEach(btn => {
-            btn.addEventListener("click", () => {
-            const key = btn.dataset.filter;
-
-            // STATUS group
-            if (["all","green","yellow","red"].includes(key)) {
-                state.bucket = key;
-                // only one active in that group
-                document.querySelectorAll('.filter-chip[data-filter="all"],.filter-chip[data-filter="green"],.filter-chip[data-filter="yellow"],.filter-chip[data-filter="red"]')
-                .forEach(b => setActive(b, b.dataset.filter === key));
-                render();
-                return;
-            }
-
-            // SCORE group
-            if (key === "score80") {
-                state.score = (state.score === "score80") ? "" : "score80";
-                setActive(btn, state.score === "score80");
-                render();
-                return;
-            }
-
-            // MODE group
-            if (key === "hasSignals" || key === "duplicateOnly") {
-                state.mode = (state.mode === key) ? "" : key;
-                // make them mutually exclusive visually
-                document.querySelectorAll('.filter-chip[data-filter="hasSignals"],.filter-chip[data-filter="duplicateOnly"]')
-                .forEach(b => setActive(b, state.mode === b.dataset.filter));
-                render();
-                return;
-            }
-
-            // SIGNAL ids (multi-select)
-            const isSignalId = key && key.includes("_"); // simple heuristic
-            if (isSignalId) {
-                const on = state.sigs.includes(key);
-                state.sigs = on ? state.sigs.filter(x => x !== key) : [...state.sigs, key];
-                setActive(btn, !on);
-                render();
-                return;
-            }
-            });
-        });
-
-        // default active: All
-        const allBtn = document.querySelector('.filter-chip[data-filter="all"]');
-        setActive(allBtn, true);
-
-        // search box
-        document.getElementById("q")?.addEventListener("input", (e) => {
-            state.q = e.target.value || "";
-            render();
-        });
-
-        // clear button
-        document.getElementById("clearFilters")?.addEventListener("click", () => {
-            state = { bucket: "all", score: "", mode: "", sigs: [], q: "" };
-
-            // reset chip visuals
-            document.querySelectorAll(".filter-chip").forEach(b => setActive(b, false));
-            setActive(document.querySelector('.filter-chip[data-filter="all"]'), true);
-
-            const q = document.getElementById("q");
-            if (q) q.value = "";
-
-            render();
-        });
+        renderActiveFilters();
         }
 
         async function load() {
@@ -907,24 +903,86 @@ export async function renderTrustProfilesPage(request, env) {
         document.getElementById("countGreen").textContent = String(c.green);
         document.getElementById("countYellow").textContent = String(c.yellow);
         document.getElementById("countRed").textContent = String(c.red);
+        syncMiniChipStates();
         render();
         }
         
+        // Bucket cards
         document.querySelectorAll(".bucket-card").forEach(btn => {
         btn.addEventListener("click", () => setActiveBucket(btn.dataset.bucket));
         });
-
-        // default active
         setActiveBucket("all");
 
-                // keep your refresh handler
-                document.getElementById("refresh")?.addEventListener("click", load);
+        // Panels (+ Score / + Signals / + More)
+        document.getElementById("openScore")?.addEventListener("click", () => togglePanel("panelScore"));
+        document.getElementById("openSignals")?.addEventListener("click", () => togglePanel("panelSignals"));
+        document.getElementById("openMore")?.addEventListener("click", () => togglePanel("panelMore"));
 
-                bindFilters();
-                load();
-                </script>
+        // Mini chips: score
+        document.querySelectorAll('.mini-chip[data-score]').forEach(btn => {
+        btn.addEventListener("click", () => {
+            const v = btn.dataset.score || "";
+            state.score = (state.score === v) ? "" : v;
+            syncMiniChipStates();
+            render();
+        });
+        });
+
+        // Mini chips: mode (mutually exclusive)
+        document.querySelectorAll('.mini-chip[data-mode]').forEach(btn => {
+        btn.addEventListener("click", () => {
+            const v = btn.dataset.mode || "";
+            state.mode = (state.mode === v) ? "" : v;
+            syncMiniChipStates();
+            render();
+        });
+        });
+
+        // Mini chips: signals (multi-select)
+        document.querySelectorAll('.mini-chip[data-sig]').forEach(btn => {
+        btn.addEventListener("click", () => {
+            const sig = btn.dataset.sig || "";
+            const on = (state.sigs || []).includes(sig);
+            state.sigs = on ? state.sigs.filter(x => x !== sig) : [...state.sigs, sig];
+            syncMiniChipStates();
+            render();
+        });
+        });
+
+        // Search
+        document.getElementById("q")?.addEventListener("input", (e) => {
+        state.q = e.target.value || "";
+        render();
+        });
+
+        // Clear
+        document.getElementById("clearFilters")?.addEventListener("click", () => {
+        state = { bucket: "all", score: "", mode: "", sigs: [], q: "" };
+
+        // reset UI
+        setActiveBucket("all");
+        const q = document.getElementById("q");
+        if (q) q.value = "";
+
+        // close panels
+        ["panelScore","panelSignals","panelMore"].forEach(id => {
+            const p = document.getElementById(id);
+            if (p) p.style.display = "none";
+        });
+
+        syncMiniChipStates();
+        render();
+        });
+
+        // Refresh
+        document.getElementById("refresh")?.addEventListener("click", load);
+
+        // Initial
+        syncMiniChipStates();
+        load();
+    </script>
             `
-            });
+    });
   
     return new Response(html, {
       headers: { "content-type": "text/html; charset=UTF-8", "cache-control": "no-store" },
@@ -1106,7 +1164,9 @@ export async function apiTrustRun(request, env) {
         const nowMs = Date.now();
         const minutesSinceLast = lastSeen ? Math.floor((nowMs - lastSeen) / 60000) : null;
         
-        profile.__dup_doc.minutes_since_last = minutesSinceLast;
+        if (profile.__dup_doc) {
+            profile.__dup_doc.minutes_since_last = minutesSinceLast;
+        }
       const signals = runSignalsV1(profile, orgConfig);
       // Score + bucket
       const scored = scoreAndBucketV1(signals);
