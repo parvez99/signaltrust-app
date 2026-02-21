@@ -10,6 +10,7 @@ import { scoreAndBucketV1 } from "../engine/scoring_v1.js";
 import { safeJsonParse } from "../lib/utils.js";
 import { sha256Hex, normalizeForDocHash } from "../lib/crypto.js";
 import { consoleShell } from "../lib/console_ui.js";
+import { runTrustPipeline } from "../engine/run_trust_pipeline"
 
 
 export async function renderTrustHome(request, env) {
@@ -1106,123 +1107,29 @@ export async function apiTrustIngest(request, env) {
     return json({ ok: true, trust_profile_id: trustProfileId });
 }
 export async function apiTrustRun(request, env) {
-    const sess = await requireSession(request, env);
-    if (!sess) return json({ error: "unauthorized" }, 401);
+    const body = await request.json().catch(() => null)
   
-    const allowed = isRecruiter(sess, env) || isAdmin(sess, env);
-    if (!allowed) return json({ error: "forbidden" }, 403);
-  
-    let body = {};
-    try { body = await request.json(); } catch {}
-    const trustProfileId = (body.trust_profile_id || "").toString().trim();
-    if (!trustProfileId) return json({ error: "trust_profile_id required" }, 400);
-  
-    // Load normalized profile
-    const row = await env.DB.prepare(
-      `SELECT id, normalized_json, source_text, created_at, doc_hash FROM trust_candidate_profiles WHERE id = ?`
-    ).bind(trustProfileId).first();
-    if (!row) return json({ error: "trust profile not found" }, 404);
-  
-    let profile;
-    try { 
-      profile = JSON.parse(row.normalized_json); 
-    }catch { return json({ error: "stored normalized_json invalid" }, 500); }
-
-    
-    try{
-      // Run signals (pure functions)
-      const engineVersion = "trust_engine_v1_mvp";
-      const orgConfig = defaultSignalConfigV1(); // toggles later
-        // ✅ attach raw resume text for signals that need it (e.g., duplicate detection)
-        profile.__source_text = row.source_text || "";
-        // Cross-upload duplicate check (same candidate, same doc_hash)
-        const docHash = (row.doc_hash || "").toString().trim();
-        if (docHash) {
-        const dupRow = await env.DB.prepare(
-            `
-            SELECT
-            COUNT(1) AS prior_count,
-            MIN(created_at) AS first_seen_at,
-            MAX(created_at) AS last_seen_at
-            FROM trust_candidate_profiles
-            WHERE created_by_candidate_id = ?
-            AND doc_hash = ?
-            AND id != ?
-            `
-        ).bind(sess.candidate_id, docHash, trustProfileId).first();
-
-        profile.__dup_doc = {
-            doc_hash: docHash,
-            prior_count: Number(dupRow?.prior_count || 0),
-            first_seen_at: dupRow?.first_seen_at || null,
-            last_seen_at: dupRow?.last_seen_at || null
-        };
-        } else {
-            profile.__dup_doc = null;
-        }
-        const lastSeen = profile.__dup_doc?.last_seen_at ? Date.parse(profile.__dup_doc.last_seen_at) : null;
-        const nowMs = Date.now();
-        const minutesSinceLast = lastSeen ? Math.floor((nowMs - lastSeen) / 60000) : null;
-        
-        if (profile.__dup_doc) {
-            profile.__dup_doc.minutes_since_last = minutesSinceLast;
-        }
-      const signals = runSignalsV1(profile, orgConfig);
-      // Score + bucket
-      const scored = scoreAndBucketV1(signals);
-  
-      // Persist report + signals
-      const reportId = crypto.randomUUID();
-      const now = new Date().toISOString();
-  
-      await env.DB.prepare(
-        `INSERT INTO trust_reports
-        (id, trust_profile_id, trust_score, bucket, hard_triggered, summary_json, engine_version, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(
-        reportId,
-        trustProfileId,
-        scored.trust_score,
-        scored.bucket,
-        scored.hard_triggered ? 1 : 0,
-        JSON.stringify(scored.summary),
-        engineVersion,
-        now
-      ).run();
-  
-      // Insert triggered signals only (MVP keeps it simple)
-      for (const s of signals.filter(x => x.status === "triggered")) {
-        const sid = crypto.randomUUID();
-        await env.DB.prepare(
-          `INSERT INTO trust_signals
-          (id, trust_report_id, signal_id, category, severity_tier, confidence, deduction, hard_trigger,
-            status, evidence_json, explanation, questions_json, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(
-          sid,
-          reportId,
-          s.signal_id,
-          s.category,
-          s.severity_tier,
-          s.confidence,
-          s.deduction,
-          s.hard_trigger ? 1 : 0,
-          s.status,
-          JSON.stringify(s.evidence || {}),
-          s.explanation || "",
-          JSON.stringify(s.suggested_questions || []),
-          now
-        ).run();
-      }
-  
-      return json({ ok: true, trust_report_id: reportId });
-  
-    }catch (e){
-      // ✅ This will show stack in wrangler tail
-      console.error("trust_run_failed", e && e.stack ? e.stack : e);
-      return json({ error: "trust_run_failed", detail: String(e?.message || e) }, 500);
+    if (!body || typeof body.resumeText !== "string" || !body.resumeText.trim()) {
+      return new Response("Missing resumeText", { status: 400 })
     }
+  
+    const candidateId = body.candidateId || crypto.randomUUID()
+    const sourceFilename = body.sourceFilename || null
+    const now = new Date().toISOString()
+  
+    const result = await runTrustPipeline({
+      candidateId,
+      sourceText: body.resumeText,
+      sourceFilename,
+      now,
+      env,
+    })
+  
+    return new Response(JSON.stringify(result), {
+      headers: { "content-type": "application/json" },
+    })
 }
+ 
 export async function apiTrustProfile(request, env) {
     const sess = await requireSession(request, env);
     if (!sess) return json({ error: "unauthorized" }, 401);

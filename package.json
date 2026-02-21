@@ -1,5 +1,8 @@
 {
   "dependencies": {
     "pdfjs-dist": "^5.4.624"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260227.0"
   }
 }

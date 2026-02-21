@@ -1,0 +1,5 @@
+export const ENGINE_VERSION = "trust_engine_v1_mvp"
+export const PROFILE_SCHEMA_VERSION = "1.0"
+export const PROMPT_EXTRACT_VERSION = "extract_v1"
+export const PROMPT_REPORT_VERSION = "report_v1"
+export const PROMPT_ESCALATE_VERSION = "escalate_v1"

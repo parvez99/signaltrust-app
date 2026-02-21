@@ -75,7 +75,7 @@ import {
 // All the routes under fetch() 
 export default {
   //Function to handle the incoming requests; Routing
-  async fetch(request, env, ctx) {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     // API
@@ -210,7 +210,7 @@ export default {
     if (path === "/trust/profiles" && request.method === "GET") return renderTrustProfilesPage(request, env);
     if (path === "/trust/profile" && request.method === "GET") return renderTrustProfilePage(request, env);
     if (path === "/trust/signals" && request.method === "GET") return renderTrustSignalsPage(request, env);
-    if (path === "/trust/api" && request.method === "GET") return renderTrustApiPage(request, env);
+    if (path === "/trust/api" && request.method === "GET") return apiTrustProfile(request, env);
     if (path === "/api/trust/ingest" && request.method === "POST") return apiTrustIngest(request, env);
     if (path === "/api/trust/run" && request.method === "POST") return apiTrustRun(request, env);
     if (path === "/api/trust/report" && request.method === "GET") return apiTrustReport(request, env);
@@ -221,6 +221,17 @@ export default {
       return apiTrustProfiles(request, env);
     }
     if (path === "/api/trust/profile" && request.method === "GET") return apiTrustProfile(request, env);
+    if (path === "/api/debug/colo" && request.method === "GET") {
+      return Response.json({
+        cf: (request as any).cf ?? null,
+        // helpful subset:
+        colo: (request as any).cf?.colo,
+        country: (request as any).cf?.country,
+        city: (request as any).cf?.city,
+        region: (request as any).cf?.region,
+      })
+    }
+    
     // Default to landing page
     return new Response(await renderLanding(request, env), {
       headers: {
