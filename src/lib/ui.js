@@ -79,7 +79,7 @@ export function pageShell({ title, body, rightPill = "MVP • Early access", ful
   <body>
     <div class="${wrapClass}">
       <div class="nav">
-        <div class="brand"><a href="/" style="color:inherit;text-decoration:none">NextOffer</a></div>
+        <div class="brand"><a href="/" style="color:inherit;text-decoration:none">SignalTrust AI</a></div>
         <div class="pill">${escapeHtml(rightPill)}</div>
       </div>
       ${body}

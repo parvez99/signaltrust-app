@@ -24,7 +24,7 @@ export async function renderTrustHome(request, env) {
     const who = escapeHtml(sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter");
   
     const html = pageShell({
-      title: "NextOffer — Trust Engine (MVP)",
+      title: "SignalTrust AI — Trust Engine (MVP)",
       rightPill: `Trust Engine • ${who}`,
       body: `
         <div class="row" style="margin-top:14px;">
@@ -99,7 +99,7 @@ export async function renderTrustReportPage(request, env) {
     const who = escapeHtml(sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter");
   
     const html = pageShell({
-      title: "NextOffer — Trust Report",
+      title: "SignalTrust AI — Trust Report",
       rightPill: `Trust Report • ${who}`,
       body: `
         <div class="row" style="margin-top:14px;">
@@ -274,7 +274,7 @@ export async function renderTrustProfilePage(request, env) {
     const who = escapeHtml(sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter");
   
     const html = pageShell({
-      title: "NextOffer — Trust Profile",
+      title: "SignalTrust AI — Trust Profile",
       rightPill: `Trust Engine • ${who}`,
       body: `
         <div class="row" style="margin-top:14px;">

@@ -30,7 +30,7 @@ export async function renderLanding(request, env) {
         <div class="card">
           <h1>Looking for your next role globally?</h1>
           <div class="sub">
-            NextOffer helps globally mobile professionals become <b>hire-ready</b> for visa + relocation roles 
+            SignalTrust AI helps globally mobile professionals become <b>hire-ready</b> for visa + relocation roles 
             and helps recruiters find ready candidates fast.
           </div>
   
@@ -61,7 +61,7 @@ export async function renderLanding(request, env) {
   </script>
     `;
   
-    return pageShell({ title: "NextOffer — Find your next role globally", body });  
+    return pageShell({ title: "SignalTrust AI — Find your next role globally", body });  
   
 }
 export async function renderWaitlistPage(env) {
@@ -73,7 +73,7 @@ export async function renderWaitlistPage(env) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>NextOffer — Waitlist</title>
+    <title>SignalTrust AI — Waitlist</title>
     <style>
       :root { color-scheme: dark; }
       body { margin:0; font-family: ui-sans-serif, system-ui; background:#0b1020; color:#e8ecff; }
@@ -113,7 +113,7 @@ export function renderThanksPage(request) {
   
     const shareUrl = "https://getnextoffer.com";
     const tweetText = encodeURIComponent(
-      "Just joined NextOffer early access — global hire-readiness + mobility for tech roles. 🚀"
+      "Just joined SignalTrust AI early access — global hire-readiness + mobility for tech roles. 🚀"
     );
     const tweetHref = `https://twitter.com/intent/tweet?text=${tweetText}&url=${encodeURIComponent(
       shareUrl
@@ -124,7 +124,7 @@ export function renderThanksPage(request) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>NextOffer — You're on the list</title>
+    <title>SignalTrust AI — You're on the list</title>
     <style>
       :root { color-scheme: dark; }
       body { margin:0; font-family: ui-sans-serif, system-ui; background:#0b1020; color:#e8ecff; }
@@ -147,7 +147,7 @@ export function renderThanksPage(request) {
       <div><a href="/">← Back to home</a></div>
   
       <div class="card">
-        <div style="opacity:.85;">NextOffer Early Access</div>
+        <div style="opacity:.85;">SignalTrust AI Early Access</div>
         <div class="big">✅ You’re on the list.</div>
   
         <div class="sub">
@@ -205,7 +205,7 @@ export async function renderApp(request, env) {
   const eligible = completion >= 70;
 
   const html = pageShell({
-    title: "NextOffer — Dashboard",
+    title: "SignalTrust AI — Dashboard",
     rightPill: "Candidate • Dashboard",
     body: `
       <div class="row" style="margin-top:14px;">
@@ -420,7 +420,7 @@ export async function renderCandidatePublic(request, env) {
     const canRequest = sess && (isRecruiter(sess, env) || isAdmin(sess, env));
   
     const html = pageShell({
-      title: `${name} — NextOffer`,
+      title: `${name} — SignalTrust AI`,
       rightPill: "Public profile",
       body: `
         <div class="row" style="margin-top:14px;">

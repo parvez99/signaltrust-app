@@ -1,4 +1,4 @@
-# NextOffer Trust Engine
+# SignalTrust AI Trust Engine
 
 A deterministic resume integrity engine for recruiters.
 

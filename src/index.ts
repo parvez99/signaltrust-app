@@ -15,7 +15,7 @@
 
 /***************************************************************
  * 02/16/2026
- NextOffer Trust Engine MVP (Cloudflare Worker + D1)
+ SignalTrust AI Trust Engine MVP (Cloudflare Worker + D1)
  Portable design notes:
   - Keep DB schema “Postgres-friendly”: UUID TEXT keys, created_at ISO strings
   - Store normalized profile JSON as TEXT (later JSONB in Postgres)

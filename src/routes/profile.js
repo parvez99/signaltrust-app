@@ -15,7 +15,7 @@ export async function renderProfilePage(request, env) {
     const p = profile || {};
     const needs = (p.needs_sponsorship ?? 0) ? "checked" : "";
     const html = pageShell({
-      title: "NextOffer — Profile",
+      title: "SignalTrust AI — Profile",
       rightPill: "Candidate • Profile",
       body: `
         <div class="row" style="margin-top:14px;">
