@@ -1,4 +1,4 @@
-name = "signaltrust-app"
+name = "signaltrust"
 main = "src/index.ts"
 compatibility_date = "2026-02-06"
 account_id = "60633ceb40b038684295dc8f39f9aae1"

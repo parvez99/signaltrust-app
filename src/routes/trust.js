@@ -24,7 +24,7 @@ export async function renderTrustHome(request, env) {
     const who = escapeHtml(sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter");
   
     const html = pageShell({
-      title: "SignalTrust AI — Trust Engine (MVP)",
+      title: "SignalTrust — Trust Engine (MVP)",
       rightPill: `Trust Engine • ${who}`,
       body: `
         <div class="row" style="margin-top:14px;">
@@ -99,7 +99,7 @@ export async function renderTrustReportPage(request, env) {
     const who = escapeHtml(sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter");
   
     const html = pageShell({
-      title: "SignalTrust AI — Trust Report",
+      title: "SignalTrust — Trust Report",
       rightPill: `Trust Report • ${who}`,
       body: `
         <div class="row" style="margin-top:14px;">
@@ -209,7 +209,12 @@ export async function renderTrustReportPage(request, env) {
           async function load() {
             document.getElementById("headline").textContent = "Loading…";
             document.getElementById("signals").innerHTML = '<div class="fine">Loading…</div>';
-  
+
+            if (!reportId || reportId === "undefined" || reportId === "null") {
+              // show friendly message or redirect back to profiles
+              document.body.innerHTML = "Missing report id. Go back and select a report."
+              throw new Error("Missing report id")
+            }
             const res = await fetch("/api/trust/report?id=" + encodeURIComponent(reportId));
             const data = await readJson(res);
   
@@ -274,7 +279,7 @@ export async function renderTrustProfilePage(request, env) {
     const who = escapeHtml(sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter");
   
     const html = pageShell({
-      title: "SignalTrust AI — Trust Profile",
+      title: "SignalTrust — Trust Profile",
       rightPill: `Trust Engine • ${who}`,
       body: `
         <div class="row" style="margin-top:14px;">
@@ -1106,28 +1111,170 @@ export async function apiTrustIngest(request, env) {
   
     return json({ ok: true, trust_profile_id: trustProfileId });
 }
+
 export async function apiTrustRun(request, env) {
-    const body = await request.json().catch(() => null)
-  
-    if (!body || typeof body.resumeText !== "string" || !body.resumeText.trim()) {
-      return new Response("Missing resumeText", { status: 400 })
+  // Read raw body once
+  const raw = await request.text().catch(() => "")
+  let body = null
+
+  try {
+    body = raw ? JSON.parse(raw) : null
+  } catch (e) {
+    return json(
+      {
+        error: "Invalid JSON",
+        rawPreview: raw.slice(0, 300),
+      },
+      400
+    )
+  }
+
+  const trustProfileId =
+    typeof body?.trust_profile_id === "string" ? body.trust_profile_id : null
+
+  // Accept resumeText / resume_text / text
+  let resumeText =
+    (typeof body?.resumeText === "string" ? body.resumeText : "") ||
+    (typeof body?.resume_text === "string" ? body.resume_text : "") ||
+    (typeof body?.text === "string" ? body.text : "")
+
+  // If resumeText missing but trust_profile_id provided, load from D1 and run pipeline
+  if (!resumeText.trim() && trustProfileId) {
+    let row = null
+
+    try {
+      row = await env.DB.prepare(
+        `SELECT created_by_candidate_id, source_text, source_filename
+         FROM trust_candidate_profiles
+         WHERE id = ?1`
+      )
+        .bind(trustProfileId)
+        .first()
+    } catch (e) {
+      return json(
+        {
+          error: "DB query failed",
+          message: String(e),
+          trust_profile_id: trustProfileId,
+        },
+        500
+      )
     }
-  
-    const candidateId = body.candidateId || crypto.randomUUID()
-    const sourceFilename = body.sourceFilename || null
+
+    if (!row || !row.source_text || !String(row.source_text).trim()) {
+      return json(
+        {
+          error: "Trust profile not found or missing source_text",
+          trust_profile_id: trustProfileId,
+        },
+        404
+      )
+    }
+
+    resumeText = String(row.source_text)
+
     const now = new Date().toISOString()
-  
+
     const result = await runTrustPipeline({
-      candidateId,
-      sourceText: body.resumeText,
-      sourceFilename,
+      candidateId: row.created_by_candidate_id,
+      sourceText: resumeText,
+      sourceFilename: row.source_filename || null,
       now,
       env,
     })
-  
-    return new Response(JSON.stringify(result), {
-      headers: { "content-type": "application/json" },
+
+    // 1) Create trust_report row
+    const trustReportId = crypto.randomUUID()
+
+    await env.DB.prepare(
+      `INSERT INTO trust_reports
+      (id, trust_profile_id, trust_score, bucket, hard_triggered,
+        summary_json, engine_version, created_at)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+    ).bind(
+      trustReportId,
+      trustProfileId, // <-- make sure this exists in both paths (see note below)
+      Number(result?.scoring?.trust_score ?? 0),
+      String(result?.scoring?.bucket ?? "yellow"),
+      result?.scoring?.hard_triggered ? 1 : 0,
+      JSON.stringify(result?.scoring?.summary ?? { tier_a_count: 0, tier_b_count: 0, tier_c_count: 0 }),
+      String(result?.engineVersion ?? "trust_engine_unknown"),
+      now
+    ).run()
+
+    // 2) Insert trust_signals (store ALL signals, but keep true status)
+    for (const sig of (result.triggeredSignals || [])) {
+      const deduction = Number(sig?.deduction || 0)
+      const hard = !!sig?.hard_trigger
+      const status =
+        typeof sig?.status === "string"
+          ? sig.status
+          : (deduction !== 0 || hard ? "triggered" : "not_triggered")
+      
+      // ✅ Only keep signals that actually apply
+      const applies = status === "triggered"
+      if (!applies) continue
+
+      await env.DB.prepare(
+        `INSERT INTO trust_signals
+        (id, trust_report_id, signal_id, category, severity_tier,
+          confidence, deduction, hard_trigger,
+          status, evidence_json, explanation, questions_json, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`
+      ).bind(
+        crypto.randomUUID(),
+        trustReportId,
+        String(sig.signal_id),
+        String(sig.category),
+        String(sig.severity_tier),
+        String(sig.confidence || "low"),
+        Number(sig.deduction || 0),
+        sig.hard_trigger ? 1 : 0,
+        status,
+        JSON.stringify(sig.evidence || {}),
+        String(sig.explanation || ""),
+        JSON.stringify(sig.suggested_questions || []),
+        now
+      ).run()
+    }
+
+    // 3) Return report id to frontend
+    return json({
+      ok: true,
+      trust_report_id: trustReportId,
     })
+  }
+
+  // Original path: run using provided resumeText
+  if (!resumeText.trim()) {
+    return json(
+      {
+        error: "Missing resumeText",
+        hint: "Send { resumeText: string } OR { trust_profile_id: string }",
+        receivedKeys: body ? Object.keys(body) : null,
+        rawPreview: raw.slice(0, 300),
+      },
+      400
+    )
+  }
+
+  const candidateId = body?.candidateId || crypto.randomUUID()
+  const sourceFilename = body?.sourceFilename || null
+  const now = new Date().toISOString()
+
+  const result = await runTrustPipeline({
+    candidateId,
+    sourceText: resumeText,
+    sourceFilename,
+    now,
+    env,
+  })
+
+  return json({
+    ok: true,
+    mode: "by_resumeText",
+    result,
+  })
 }
  
 export async function apiTrustProfile(request, env) {
@@ -1256,6 +1403,7 @@ export async function apiTrustReport(request, env) {
               evidence_json, explanation, questions_json, created_at
        FROM trust_signals
        WHERE trust_report_id = ?
+         AND (status = 'triggered')
        ORDER BY severity_tier ASC, deduction DESC, created_at ASC`
     ).bind(id).all();
   

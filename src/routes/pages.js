@@ -30,8 +30,7 @@ export async function renderLanding(request, env) {
         <div class="card">
           <h1>Looking for your next role globally?</h1>
           <div class="sub">
-            SignalTrust AI helps globally mobile professionals become <b>hire-ready</b> for visa + relocation roles 
-            and helps recruiters find ready candidates fast.
+            SignalTrust - AI-powered trust infrastructure for global hiring. SignalTrust extracts intelligence from workforce signals to reduce hiring risk, accelerate decision-making, and build confidence at scale.
           </div>
   
           <div class="card" style="margin-top:14px; background: rgba(23,190,187,.06); border-color: rgba(23,190,187,.18);">
@@ -61,7 +60,7 @@ export async function renderLanding(request, env) {
   </script>
     `;
   
-    return pageShell({ title: "SignalTrust AI — Find your next role globally", body });  
+    return pageShell({ title: "SignalTrust — AI-powered trust infrastructure for global hiring", body });  
   
 }
 export async function renderWaitlistPage(env) {
@@ -73,7 +72,7 @@ export async function renderWaitlistPage(env) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SignalTrust AI — Waitlist</title>
+    <title>SignalTrust — Waitlist</title>
     <style>
       :root { color-scheme: dark; }
       body { margin:0; font-family: ui-sans-serif, system-ui; background:#0b1020; color:#e8ecff; }
@@ -111,9 +110,9 @@ export function renderThanksPage(request) {
     const safeRole = escapeHtml(role);
     const safeTarget = escapeHtml(target);
   
-    const shareUrl = "https://getnextoffer.com";
+    const shareUrl = "https://signaltrust.ai";
     const tweetText = encodeURIComponent(
-      "Just joined SignalTrust AI early access — global hire-readiness + mobility for tech roles. 🚀"
+      "Just joined SignalTrust early access — AI-powered trust infrastructure for global hiring. 🚀"
     );
     const tweetHref = `https://twitter.com/intent/tweet?text=${tweetText}&url=${encodeURIComponent(
       shareUrl
@@ -124,7 +123,7 @@ export function renderThanksPage(request) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SignalTrust AI — You're on the list</title>
+    <title>SignalTrust — You're on the list</title>
     <style>
       :root { color-scheme: dark; }
       body { margin:0; font-family: ui-sans-serif, system-ui; background:#0b1020; color:#e8ecff; }
@@ -147,7 +146,7 @@ export function renderThanksPage(request) {
       <div><a href="/">← Back to home</a></div>
   
       <div class="card">
-        <div style="opacity:.85;">SignalTrust AI Early Access</div>
+        <div style="opacity:.85;">SignalTrust - Early Access</div>
         <div class="big">✅ You’re on the list.</div>
   
         <div class="sub">
@@ -205,7 +204,7 @@ export async function renderApp(request, env) {
   const eligible = completion >= 70;
 
   const html = pageShell({
-    title: "SignalTrust AI — Dashboard",
+    title: "SignalTrust — Dashboard",
     rightPill: "Candidate • Dashboard",
     body: `
       <div class="row" style="margin-top:14px;">
@@ -420,7 +419,7 @@ export async function renderCandidatePublic(request, env) {
     const canRequest = sess && (isRecruiter(sess, env) || isAdmin(sess, env));
   
     const html = pageShell({
-      title: `${name} — SignalTrust AI`,
+      title: `${name} — SignalTrust`,
       rightPill: "Public profile",
       body: `
         <div class="row" style="margin-top:14px;">

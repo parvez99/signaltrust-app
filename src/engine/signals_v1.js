@@ -23,14 +23,55 @@ export function defaultSignalConfigV1() {
     };
 }
 
-export function runSignalsV1(profile, config) {
-    const out = [];
-    if (config.enabled.timeline_overlap) out.push(signalTimelineOverlap(profile));
-    if (config.enabled.gap_gt_6mo) out.push(signalGapGt6Months(profile));
-    if (config.enabled.gap_after_edu_to_first_role) out.push(signalGapAfterEducationToFirstRole(profile));
-    if (config.enabled.duplicate_roles) out.push(signalDuplicateRoles(profile)); // ✅ add
-    if (config.enabled.duplicate_resume_upload) out.push(signalDuplicateResumeUpload(profile));
-    return out;
+export function runSignalsV1(profile, config, ctx = {}) {
+  const out = [];
+
+  if (config.enabled.timeline_overlap) out.push(signalTimelineOverlap(profile));
+  if (config.enabled.gap_gt_6mo) out.push(signalGapGt6Months(profile));
+  if (config.enabled.gap_after_edu_to_first_role) out.push(signalGapAfterEducationToFirstRole(profile));
+  if (config.enabled.duplicate_roles) out.push(signalDuplicateRoles(profile, ctx));
+  if (config.enabled.duplicate_resume_upload) out.push(signalDuplicateResumeUpload(profile));
+
+  // ✅ Anti-double-counting: early-career "gap after edu" overlaps with "gap between roles"
+  return dedupeEarlyCareerGaps(out);
+}
+
+// --- helper ---
+function dedupeEarlyCareerGaps(signals) {
+  const gapB = signals.find(s => s?.signal_id === "gap_gt_6mo" && s?.status === "triggered");
+  const gapC = signals.find(s => s?.signal_id === "gap_after_edu_to_first_role" && s?.status === "triggered");
+
+  if (!gapB || !gapC) return signals;
+
+  // Identify the "to_role" company/title from each signal (best-effort)
+  const bTo = gapB?.evidence?.to_role || {};
+  const cTo = gapC?.evidence?.to_role || {};
+
+  const key = (r) =>
+    [String(r?.company || "").toLowerCase().trim(), String(r?.title || "").toLowerCase().trim()]
+      .filter(Boolean)
+      .join("|");
+
+  // If they point to the same first role, don't double-penalize
+  const sameToRole = key(bTo) && key(bTo) === key(cTo);
+
+  if (!sameToRole) return signals;
+
+  // ✅ keep Tier C visible, but remove penalty
+  const updated = signals.map(s => {
+    if (s?.signal_id !== "gap_after_edu_to_first_role") return s;
+
+    return {
+      ...s,
+      deduction: 0,
+      // keep status triggered so it still shows up
+      explanation:
+        (s.explanation ? s.explanation + " " : "") +
+        "(Note: This overlaps with the detected employment gap; deduction not double-counted.)"
+    };
+  });
+
+  return updated;
 }
   
 export function signalTitle(id) {
@@ -44,9 +85,9 @@ export function signalTitle(id) {
     return map[id] || id;
 }
 
-export function signalDuplicateRoles(profile) {
-    // ✅ Use the raw resume text (attached in apiTrustRun)
-    const text = String(profile.__source_text || "").trim();
+export function signalDuplicateRoles(profile, ctx = {}) {
+    // Prefer ctx.sourceText; fall back to legacy profile.__source_text if present
+    const text = String(ctx.sourceText || profile.__source_text || "").trim();
     if (!text) {
       return makeSignal({
         signal_id: "duplicate_roles",
@@ -150,72 +191,98 @@ export function signalDuplicateRoles(profile) {
  * If later we extract explicit contract/part-time, confidence adjusts.
  */
 export function signalTimelineOverlap(profile) {
-    const roles = Array.isArray(profile.experience) ? profile.experience : [];
-    const pairs = [];
-  
-    for (let i = 0; i < roles.length; i++) {
-      for (let j = i + 1; j < roles.length; j++) {
-        const role1 = roles[i];
-        const role2 = roles[j];
-  
-        const overlapDays = calcOverlapDays(
-          role1.start_date, role1.end_date,
-          role2.start_date, role2.end_date
-        );
-  
-        if (overlapDays > 60) {
-          pairs.push({ role1, role2, overlapDays });
-        }
+  const roles = Array.isArray(profile.experience) ? profile.experience : [];
+  const pairs = [];
+
+  for (let i = 0; i < roles.length; i++) {
+    for (let j = i + 1; j < roles.length; j++) {
+      const role1 = roles[i];
+      const role2 = roles[j];
+
+      const overlapDays = calcOverlapDays(
+        role1.start_date, role1.end_date,
+        role2.start_date, role2.end_date
+      );
+
+      // ✅ If both roles are year precision only, require a much larger overlap to trigger
+      const role1YearOnly =
+        (role1.start_date?.precision === "year") &&
+        (role1.end_date?.precision === "year" || !role1.end_date?.iso); // treat missing end as not-year-only? keep simple
+      const role2YearOnly =
+        (role2.start_date?.precision === "year") &&
+        (role2.end_date?.precision === "year" || !role2.end_date?.iso);
+
+      const bothYearOnly = role1YearOnly && role2YearOnly;
+      const minDays = bothYearOnly ? 365 : 60;
+
+      if (overlapDays > minDays) {
+        pairs.push({ role1, role2, overlapDays });
       }
     }
-  
-    if (!pairs.length) {
-      return makeSignal({
-        signal_id: "timeline_overlap",
-        title: "Overlapping Roles",
-        category: "timeline_integrity",
-        severity_tier: "A",
-        confidence: "low",
-        deduction: 0,
-        hard_trigger: true,
-        status: "not_triggered",
-        evidence: {},
-        explanation: "No overlapping roles detected (MVP).",
-        suggested_questions: []
-      });
-    }
-  
-    const top = pairs.sort((x, y) => y.overlapDays - x.overlapDays)[0];
-    const conf = confidenceFromDatePrecision(top.role1, top.role2, "medium", top.overlapDays);
-    const deduction = conf === "high" ? 30 : conf === "medium" ? 20 : 12;
-  
-    const explanation =
-      `Two roles overlap by ~${top.overlapDays} days. This can reduce timeline trust if both were full-time.`;
-  
-    const evidence = {
-      overlap_days: top.overlapDays,
-      role_1: summarizeRole(top.role1),
-      role_2: summarizeRole(top.role2)
-    };
-  
+  }
+
+  if (!pairs.length) {
     return makeSignal({
       signal_id: "timeline_overlap",
       title: "Overlapping Roles",
       category: "timeline_integrity",
       severity_tier: "A",
-      confidence: conf,
-      deduction,
-      hard_trigger: true,
-      status: "triggered",
-      evidence,
-      explanation,
-      suggested_questions: [
-        "Were these roles held simultaneously? If yes, was one part-time/contract?",
-        "Which role was your primary employment during the overlap period?"
-      ]
+      confidence: "low",
+      deduction: 0,
+      hard_trigger: false,
+      status: "not_triggered",
+      evidence: {},
+      explanation: "No overlapping roles detected (MVP).",
+      suggested_questions: []
     });
+  }
+
+  const top = pairs.sort((x, y) => y.overlapDays - x.overlapDays)[0];
+  const conf = confidenceFromDatePrecision(top.role1, top.role2, "medium", top.overlapDays);
+  const deduction = conf === "high" ? 30 : conf === "medium" ? 20 : 12;
+
+  const explanation =
+    `Two roles overlap by ~${top.overlapDays} days. This can reduce timeline trust if both were full-time.`;
+
+  const evidence = {
+    overlap_days: top.overlapDays,
+    role_1: summarizeRole(top.role1),
+    role_2: summarizeRole(top.role2)
+  };
+
+  return makeSignal({
+    signal_id: "timeline_overlap",
+    title: "Overlapping Roles",
+    category: "timeline_integrity",
+    severity_tier: "A",
+    confidence: conf,
+    deduction,
+    hard_trigger: true,
+    status: "triggered",
+    evidence,
+    explanation,
+    suggested_questions: [
+      "Were these roles held simultaneously? If yes, was one part-time/contract?",
+      "Which role was your primary employment during the overlap period?"
+    ]
+  });
 }
 
+function gapIsCoveredByEducation(profile, fromMs, toMs) {
+  const edu = Array.isArray(profile.education) ? profile.education : [];
+  if (!edu.length) return false;
+
+  for (const e of edu) {
+    const s = e?.start_date?.iso ? earliestPossibleStartMs(e.start_date) : NaN;
+    const en = e?.end_date?.iso ? latestPossibleEndMs(e.end_date) : NaN;
+    if ([s, en].some(x => Number.isNaN(x))) continue;
+
+    // education overlaps the gap window
+    const overlaps = s <= toMs && en >= fromMs;
+    if (overlaps) return true;
+  }
+  return false;
+}
 /**
 * Signal 2: Unexplained Gap > 6 Months (Tier B)
 */
@@ -257,8 +324,13 @@ export function signalGapGt6Months(profile) {
       
       if ([curEndLatest, nextStartEarliest].some(x => Number.isNaN(x))) continue;
       
+      // ✅ If education sits inside the gap window, don't treat it as "unexplained"
+      if (gapIsCoveredByEducation(profile, curEndLatest, nextStartEarliest)) {
+        continue;
+      }
+
       const gapDays = daysBetweenMs(curEndLatest, nextStartEarliest);
-      
+
       if (gapDays > maxGap) {
         maxGap = gapDays;
         gap = { from: cur, to: next, gapDays };
@@ -376,17 +448,20 @@ export function earliestPossibleStartMs(d) {
 }
   
 export function calcOverlapDays(aStart, aEnd, bStart, bEnd) {
-    const as = isoToMs(aStart?.iso);
-    const ae = aEnd?.iso ? isoToMs(aEnd.iso) : Date.now();
-    const bs = isoToMs(bStart?.iso);
-    const be = bEnd?.iso ? isoToMs(bEnd.iso) : Date.now();
-    if ([as, ae, bs, be].some(x => Number.isNaN(x))) return 0;
-  
-    const start = Math.max(as, bs);
-    const end = Math.min(ae, be);
-    const diff = end - start;
-    if (diff <= 0) return 0;
-    return Math.floor(diff / (1000 * 60 * 60 * 24));
+  const as = earliestPossibleStartMs(aStart);
+  const ae = aEnd?.iso ? latestPossibleEndMs(aEnd) : Date.now();
+
+  const bs = earliestPossibleStartMs(bStart);
+  const be = bEnd?.iso ? latestPossibleEndMs(bEnd) : Date.now();
+
+  if ([as, ae, bs, be].some(x => Number.isNaN(x))) return 0;
+
+  const start = Math.max(as, bs);
+  const end = Math.min(ae, be);
+  const diff = end - start;
+
+  if (diff <= 0) return 0;
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
   
 export function confidenceFromDatePrecision(roleA, roleB, prefer = "medium", overlapDays = 0) {
@@ -398,8 +473,10 @@ export function confidenceFromDatePrecision(roleA, roleB, prefer = "medium", ove
   const tight = (p) => (p === "day" || p === "month");
   const known = (p) => (p && p !== "unknown");
 
-  // If overlap is large, treat as high confidence even if only year precision
-  if (overlapDays >= 180) return "high";
+  // If overlap is large, treat as high confidence only if at least one side has month/day precision
+  const precisions = [aStart, aEnd, bStart, bEnd];
+  const anyTight = precisions.some(p => p === "month" || p === "day");
+  if (overlapDays >= 180 && anyTight) return "high";
 
   // High confidence if both roles have at least month/day precision on start OR end
   const aTight = tight(aStart) || tight(aEnd);
@@ -467,18 +544,25 @@ export function signalGapAfterEducationToFirstRole(profile) {
       }
     }
   
-    // Earliest role start (by earliestPossibleStartMs)
+    // ✅ First role AFTER latest education end
     let firstRole = null;
     let firstRoleStartMs = Infinity;
+
     for (const r of rolesWithStart) {
       const startMs = earliestPossibleStartMs(r.start_date);
-      if (!Number.isNaN(startMs) && startMs < firstRoleStartMs) {
+      if (Number.isNaN(startMs)) continue;
+
+      // Only consider roles that start after education ends
+      if (startMs < latestEduEndMs) continue;
+
+      if (startMs < firstRoleStartMs) {
         firstRoleStartMs = startMs;
         firstRole = r;
       }
     }
-  
-    if (!latestEdu || !firstRole || !Number.isFinite(latestEduEndMs) || !Number.isFinite(firstRoleStartMs)) {
+
+    // If there is no role after education end, cannot compute gap-after-edu
+    if (!firstRole || !Number.isFinite(firstRoleStartMs)) {
       return makeSignal({
         signal_id: "gap_after_edu_to_first_role",
         title: "Gap after education before first role",
@@ -489,7 +573,7 @@ export function signalGapAfterEducationToFirstRole(profile) {
         hard_trigger: false,
         status: "not_triggered",
         evidence: {},
-        explanation: "Could not compute education→first role gap (MVP).",
+        explanation: "No post-education role found to compute this gap (MVP).",
         suggested_questions: []
       });
     }

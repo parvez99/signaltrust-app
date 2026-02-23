@@ -130,7 +130,7 @@ export function consoleShell({ title, who, active = "profiles", body = "" }) {
       <div class="console-wrap">
         <div class="console">
             <aside class="sidebar">
-            <div class="sidebrand">SignalTrust AI</div>
+            <div class="sidebrand">SignalTrust</div>
             <div class="fine">Recruiter Console</div>
             <div class="divider"></div>
 

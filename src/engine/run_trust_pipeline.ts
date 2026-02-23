@@ -79,12 +79,26 @@ export async function runTrustPipeline(args: {
     })
   }
 
-  // 3️⃣ Run signals (using real export)
+  // 3️⃣ Run signals on deterministic normalization (best month precision)
   const config = defaultSignalConfigV1()
-  const triggeredSignals = runSignalsV1(profile, config)
+
+  const profileForSignals = normalizeResumeTextToProfileV1({
+    candidateId,
+    sourceText,
+    sourceFilename: sourceFilename ?? "",
+    now,
+  })
+
+  const triggeredSignals = runSignalsV1(profileForSignals, config, {
+    sourceText,
+    sourceFilename: sourceFilename ?? null,
+  })
 
   // 4️⃣ Score
   const scoring = scoreAndBucketV1(triggeredSignals)
+
+  // Optional but recommended: use deterministic profile for report rendering
+  profile = profileForSignals
 
   return {
     engineVersion: ENGINE_VERSION,

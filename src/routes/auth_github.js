@@ -71,7 +71,7 @@ export async function githubCallback(request, env) {
     const userRes = await fetch("https://api.github.com/user", {
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        "User-Agent": "SignalTrust AI",
+        "User-Agent": "SignalTrust",
         Accept: "application/vnd.github+json",
       },
     });
@@ -87,7 +87,7 @@ export async function githubCallback(request, env) {
       const emailsRes = await fetch("https://api.github.com/user/emails", {
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          "User-Agent": "SignalTrust AI",
+          "User-Agent": "SignalTrust",
           Accept: "application/vnd.github+json",
         },
       });

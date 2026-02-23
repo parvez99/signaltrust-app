@@ -28,7 +28,7 @@ export async function renderAdminWaitlist(request, env) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SignalTrust AI — Admin Waitlist</title>
+    <title>SignalTrust — Admin Waitlist</title>
     <style>
       :root { color-scheme: dark; }
       body { margin:0; font-family: ui-sans-serif, system-ui; background:#0b1020; color:#e8ecff; }
@@ -184,7 +184,7 @@ export async function renderAdminCandidates(request, env) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SignalTrust AI — Admin Candidates</title>
+    <title>SignalTrust — Admin Candidates</title>
     <style>
       :root { color-scheme: dark; }
       body { margin:0; font-family: ui-sans-serif, system-ui; background:#0b1020; color:#e8ecff; }

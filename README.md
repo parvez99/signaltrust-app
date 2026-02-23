@@ -1,8 +1,10 @@
-# SignalTrust AI Trust Engine
+# SignalTrust
 
-A deterministic resume integrity engine for recruiters.
+AI-powered trust infrastructure for global hiring.
 
-This service ingests resume text (PDF or paste), normalizes it into a structured candidate profile, runs timeline integrity signals, and produces a trust-scored report.
+SignalTrust ingests resume data (PDF or paste), normalizes it into a structured candidate profile, applies deterministic integrity signals, and produces a trust-scored report for recruiters.
+
+The platform is designed to reduce hiring risk, accelerate decision-making, and provide repeatable, explainable signal generation.
 
 ## Current Signals (MVP)
 - Overlapping roles detection

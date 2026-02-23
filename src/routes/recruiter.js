@@ -73,7 +73,7 @@ export async function renderRecruiterSearch(request, env) {
     const who = escapeHtml(sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter");
   
     const html = pageShell({
-      title: "SignalTrust AI — Recruiter Search",
+      title: "SignalTrust — Recruiter Search",
       rightPill: `Recruiter • ${who}`,
       body: `
         <div class="row" style="margin-top:14px;">
@@ -231,7 +231,7 @@ export async function renderRecruiterRequests(request, env) {
     const who = escapeHtml(sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter");
   
     const html = pageShell({
-      title: "SignalTrust AI — My Intro Requests",
+      title: "SignalTrust — My Intro Requests",
       rightPill: `Recruiter • ${who}`,
       body: `
         <div class="row" style="margin-top:14px;">

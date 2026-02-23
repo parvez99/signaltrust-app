@@ -12,6 +12,29 @@
 import { normalizeWhitespace } from "../lib/utils.js"
 import { parseSingleYearFromLine } from "../engine/signals_v1.js"
 
+function coalesceWrappedMonthYearLines(lines) {
+  const out = [];
+  const monthRe = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b\.?$/i;
+  const yearRangeRe = /^\s*(19|20)\d{2}\b\s*-\s*((19|20)\d{2}\b|present)\b/i;
+
+  for (let i = 0; i < lines.length; i++) {
+    const cur = String(lines[i] || "").trim();
+    const next = i + 1 < lines.length ? String(lines[i + 1] || "").trim() : "";
+
+    // If current line ends with a month (often after a dash), and next line starts with "YYYY - ..."
+    // merge them: "… - Oct" + "2023 - Present" => "… - Oct 2023 - Present"
+    if (cur && next && monthRe.test(cur) && yearRangeRe.test(next)) {
+      out.push(cur + " " + next);
+      i++; // skip next
+      continue;
+    }
+
+    out.push(cur);
+  }
+
+  return out;
+}
+
 export function detectSectionRanges(lines) {
     const headerMatchers = [
       { key: "experience", re: /^(work experience|experience|employment|career history|professional experience)\b/i },
@@ -65,7 +88,10 @@ export function normalizeResumeTextToProfileV1({ candidateId, sourceText, source
     const emails = [...new Set(matchEmails(clean))].slice(0, 5);
     const phones = [...new Set(matchPhones(clean))].slice(0, 3);
   
-    const lines = clean.split("\n").map(s => s.trim()).filter(Boolean);
+    let lines = clean.split("\n").map(s => s.trim()).filter(Boolean);
+
+    // ✅ Fix: merge wrapped month line + year-range line (e.g. "StackWorks - Oct" + "2023 - Present")
+    lines = coalesceWrappedMonthYearLines(lines);
   
     // ✅ Section detection
     const ranges = detectSectionRanges(lines);
