@@ -154,8 +154,21 @@ export async function renderTrustReportPage(request, env) {
 
           <div class="divider"></div>
 
-          <div id="summary" class="row" style="gap:10px; flex-wrap:wrap;"></div>
-  
+          <div class="row" style="gap:10px; align-items:center; flex-wrap:wrap;">
+            <div id="summary" class="row" style="gap:10px; flex-wrap:wrap;"></div>
+            <span class="spacer"></span>
+
+            <button class="btn btn-ghost" id="btnCopySummary" type="button" disabled>
+              Copy recruiter summary
+            </button>
+
+            <button class="btn btn-ghost" id="btnCopyQuestions" type="button" disabled>
+              Copy interview questions
+            </button>
+
+            <span class="fine" id="copyToast" style="display:none;"></span>
+          </div>
+
           <div class="divider"></div>
   
           <div style="display:grid; grid-template-columns: 1fr; gap:10px;" id="signals">
@@ -165,7 +178,9 @@ export async function renderTrustReportPage(request, env) {
   
         <script>
           const reportId = ${JSON.stringify(id)};
-  
+          let __lastReport = null;
+          let __lastSignals = [];
+
           function esc(s) {
             return String(s || "")
               .replaceAll("&", "&amp;")
@@ -174,17 +189,17 @@ export async function renderTrustReportPage(request, env) {
               .replaceAll('"', "&quot;")
               .replaceAll("'", "&#039;");
           }
-  
+
           function pill(text, bg, bd, ink) {
-            return '<span class="pill" style="background:'+bg+'; border-color:'+bd+'; color:'+ink+';">' + text + '</span>';
+            return '<span class="pill" style="background:' + bg + '; border-color:' + bd + '; color:' + ink + ';">' + text + '</span>';
           }
-  
+
           async function readJson(res) {
             const ct = res.headers.get("content-type") || "";
             if (ct.includes("application/json")) return await res.json();
             return { error: await res.text() };
           }
-  
+
           function bucketBadge(bucket) {
             const b = String(bucket || "unknown");
             if (b === "green") return pill("Green", "rgba(12,122,75,.10)", "rgba(12,122,75,.25)", "#0c7a4b");
@@ -192,57 +207,144 @@ export async function renderTrustReportPage(request, env) {
             if (b === "red") return pill("Red", "rgba(180,35,24,.10)", "rgba(180,35,24,.25)", "#b42318");
             return pill(b, "rgba(11,18,32,.06)", "var(--border)", "var(--muted)");
           }
-  
+
           function severityTag(tier) {
             const t = String(tier || "");
             if (t === "A") return pill("Tier A", "rgba(180,35,24,.08)", "rgba(180,35,24,.22)", "#b42318");
             if (t === "B") return pill("Tier B", "rgba(245,158,11,.10)", "rgba(245,158,11,.26)", "#8a5a00");
             return pill("Tier C", "rgba(11,18,32,.06)", "var(--border)", "var(--muted)");
           }
-  
+
           function confTag(c) {
             const x = String(c || "");
             if (x === "high") return pill("High confidence", "rgba(12,122,75,.10)", "rgba(12,122,75,.25)", "#0c7a4b");
             if (x === "medium") return pill("Medium confidence", "rgba(245,158,11,.10)", "rgba(245,158,11,.26)", "#8a5a00");
             return pill("Low confidence", "rgba(11,18,32,.06)", "var(--border)", "var(--muted)");
           }
-  
+
           function signalCard(s) {
             const title = esc(s.title || s.signal_id);
             const expl = esc(s.explanation || "");
             const ded = Number(s.deduction || 0);
             const questions = Array.isArray(s.suggested_questions) ? s.suggested_questions : [];
             const ev = s.evidence || null;
-  
+
             const evHtml = ev
               ? '<details style="margin-top:10px;"><summary class="fine">Evidence</summary>' +
                 '<pre style="white-space:pre-wrap; background:rgba(11,18,32,.04); border:1px solid var(--border); border-radius:14px; padding:10px; overflow:auto;">' +
                 esc(JSON.stringify(ev, null, 2)) +
                 '</pre></details>'
-              : '';
-  
+              : "";
+
             const qHtml = questions.length
               ? '<div style="margin-top:10px;"><div class="fine">Suggested questions</div><ul style="margin:8px 0 0; padding-left:18px;">' +
-                questions.map(q => '<li>' + esc(q) + '</li>').join('') +
+                questions.map(q => '<li>' + esc(q) + '</li>').join("") +
                 '</ul></div>'
-              : '';
-  
+              : "";
+
             return (
               '<div style="padding:12px; border:1px solid var(--border); border-radius:16px; background:rgba(255,255,255,.92); box-shadow:0 8px 20px rgba(11,18,32,.06);">' +
-                '<div class="row" style="justify-content:space-between; gap:10px;">' +
-                  '<div style="font-weight:900;">' + title + '</div>' +
-                  '<div class="row" style="gap:8px;">' +
-                    severityTag(s.severity_tier) +
-                    confTag(s.confidence) +
-                    (ded ? pill("-" + ded, "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") : "") +
-                  '</div>' +
-                '</div>' +
-                '<div style="margin-top:8px; color:rgba(11,18,32,.72); line-height:1.5;">' + expl + '</div>' +
-                qHtml +
-                evHtml +
+              '<div class="row" style="justify-content:space-between; gap:10px;">' +
+              '<div style="font-weight:900;">' + title + '</div>' +
+              '<div class="row" style="gap:8px;">' +
+              severityTag(s.severity_tier) +
+              confTag(s.confidence) +
+              (ded ? pill("-" + ded, "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") : "") +
+              '</div>' +
+              '</div>' +
+              '<div style="margin-top:8px; color:rgba(11,18,32,.72); line-height:1.5;">' + expl + '</div>' +
+              qHtml +
+              evHtml +
               '</div>'
             );
           }
+
+          async function copyToClipboard(text) {
+            try {
+              await navigator.clipboard.writeText(text);
+              return true;
+            } catch (e) {
+              try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                const ok = document.execCommand("copy");
+                document.body.removeChild(ta);
+                return ok;
+              } catch {
+                return false;
+              }
+            }
+          }
+
+          function showToast(msg) {
+            const el = document.getElementById("copyToast");
+            if (!el) return;
+            el.textContent = msg;
+            el.style.display = "inline";
+            clearTimeout(window.__toastT);
+            window.__toastT = setTimeout(function () {
+              el.style.display = "none";
+            }, 1400);
+          }
+
+          function buildInterviewQuestions(signals) {
+            const list = Array.isArray(signals) ? signals : [];
+            const seen = new Set();
+            const out = [];
+            const NL = String.fromCharCode(10);
+
+            for (const s of list) {
+              const title = (s && (s.title || s.signal_id)) ? (s.title || s.signal_id) : "Signal";
+              const qs = Array.isArray(s && s.suggested_questions) ? s.suggested_questions : [];
+              const cleanQs = qs.map(function (q) { return String(q || "").trim(); }).filter(Boolean);
+              if (!cleanQs.length) continue;
+
+              out.push("## " + title);
+              for (const q of cleanQs) {
+                const key = q.toLowerCase();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                out.push("- " + q);
+              }
+              out.push("");
+            }
+
+            return out.join(NL).trim();
+          }
+
+          function buildRecruiterSummary(report, signals) {
+            const score = Number((report && report.trust_score) || 0);
+            const bucket = String((report && report.bucket) || "unknown").toUpperCase();
+            const hard = (report && report.hard_triggered) ? "YES" : "NO";
+
+            const NL = String.fromCharCode(10);
+            const list = Array.isArray(signals) ? signals : [];
+
+            const top = list.slice(0, 3).map(function (s) {
+              const title = (s && (s.title || s.signal_id)) ? (s.title || s.signal_id) : "Signal";
+              const sev = (s && s.severity_tier) ? s.severity_tier : "?";
+              const ded = Number((s && s.deduction) || 0);
+              return "- [Tier " + sev + "] " + title + " (-" + ded + ")";
+            }).join(NL) || "- None";
+
+            const questions = buildInterviewQuestions(signals);
+
+            return [
+              "SignalTrust Summary",
+              "Score: " + score + " (" + bucket + ") - Hard-triggered: " + hard,
+              "",
+              "Top risks:",
+              top,
+              "",
+              questions ? ("Interview questions:" + NL + questions) : ("Interview questions:" + NL + "- None"),
+            ].join(NL);
+          }
+
           function fmtDate(d) {
             if (!d) return "Present";
             return String(d);
@@ -251,21 +353,19 @@ export async function renderTrustReportPage(request, env) {
           function chip(text) {
             return '<span class="pill" style="background:rgba(11,18,32,.06); border-color:var(--border); color:var(--muted);">' + esc(text) + '</span>';
           }
-
           function warnChip(text) {
             return '<span class="pill" style="background:rgba(245,158,11,.10); border-color:rgba(245,158,11,.26); color:#8a5a00;">' + esc(text) + '</span>';
           }
-
           function okChip(text) {
             return '<span class="pill" style="background:rgba(12,122,75,.10); border-color:rgba(12,122,75,.25); color:#0c7a4b;">' + esc(text) + '</span>';
           }
 
           function renderCandidateCard(p) {
-            const c = p?.candidate || {};
-            const meta = p?.meta || {};
-            const conf = meta?.extractionConfidence;
+            const c = (p && p.candidate) ? p.candidate : {};
+            const meta = (p && p.meta) ? p.meta : {};
+            const conf = meta ? meta.extractionConfidence : null;
 
-            const warnings = Array.isArray(meta?.parsingWarnings) ? meta.parsingWarnings : [];
+            const warnings = Array.isArray(meta && meta.parsingWarnings) ? meta.parsingWarnings : [];
             const warningHtml = warnings.length
               ? '<div class="row" style="gap:8px; flex-wrap:wrap; margin-top:8px;">' + warnings.map(w => warnChip(w)).join("") + '</div>'
               : '<div class="fine" style="margin-top:8px;">No parsing warnings.</div>';
@@ -282,21 +382,18 @@ export async function renderTrustReportPage(request, env) {
 
             return (
               '<div style="padding:12px; border:1px solid var(--border); border-radius:16px; background:rgba(255,255,255,.92); box-shadow:0 8px 20px rgba(11,18,32,.06);">' +
-                '<div style="font-weight:900; font-size:16px;">' + esc(c.name || "Candidate") + '</div>' +
-                '<div class="row" style="gap:8px; flex-wrap:wrap; margin-top:8px;">' +
-                  confHtml +
-                  contactBits +
-                '</div>' +
-                warningHtml +
+              '<div style="font-weight:900; font-size:16px;">' + esc(c.name || "Candidate") + '</div>' +
+              '<div class="row" style="gap:8px; flex-wrap:wrap; margin-top:8px;">' + confHtml + contactBits + '</div>' +
+              warningHtml +
               '</div>'
             );
           }
 
           function renderRolesTable(p) {
-            const roles = Array.isArray(p?.roles) ? p.roles : [];
+            const roles = Array.isArray(p && p.roles) ? p.roles : [];
             if (!roles.length) return '<div class="fine">No roles extracted.</div>';
 
-            const rows = roles.map(r => {
+            const rows = roles.map(function (r) {
               const company = r.company || "";
               const title = r.title || "";
               const start = fmtDate(r.startDate);
@@ -306,78 +403,88 @@ export async function renderTrustReportPage(request, env) {
               const loc = r.location || "";
 
               return (
-                '<tr>' +
-                  '<td style="padding:8px 10px; border-top:1px solid var(--border);"><b>' + esc(company) + '</b><div class="fine">' + esc(loc) + '</div></td>' +
-                  '<td style="padding:8px 10px; border-top:1px solid var(--border);">' + esc(title) + '</td>' +
-                  '<td style="padding:8px 10px; border-top:1px solid var(--border); white-space:nowrap;">' + esc(start) + '</td>' +
-                  '<td style="padding:8px 10px; border-top:1px solid var(--border); white-space:nowrap;">' + esc(end) + '</td>' +
-                  '<td style="padding:8px 10px; border-top:1px solid var(--border); white-space:nowrap;">' + esc(typ) + '</td>' +
-                  '<td style="padding:8px 10px; border-top:1px solid var(--border); white-space:nowrap;">' + esc(conf) + '</td>' +
-                '</tr>'
+                "<tr>" +
+                '<td style="padding:8px 10px; border-top:1px solid var(--border);"><b>' + esc(company) + "</b><div class='fine'>" + esc(loc) + "</div></td>" +
+                '<td style="padding:8px 10px; border-top:1px solid var(--border);">' + esc(title) + "</td>" +
+                '<td style="padding:8px 10px; border-top:1px solid var(--border); white-space:nowrap;">' + esc(start) + "</td>" +
+                '<td style="padding:8px 10px; border-top:1px solid var(--border); white-space:nowrap;">' + esc(end) + "</td>" +
+                '<td style="padding:8px 10px; border-top:1px solid var(--border); white-space:nowrap;">' + esc(typ) + "</td>" +
+                '<td style="padding:8px 10px; border-top:1px solid var(--border); white-space:nowrap;">' + esc(conf) + "</td>" +
+                "</tr>"
               );
             }).join("");
 
             return (
               '<div style="border:1px solid var(--border); border-radius:14px; overflow:hidden; background:rgba(255,255,255,.92);">' +
-                '<table style="width:100%; border-collapse:collapse;">' +
-                  '<thead>' +
-                    '<tr style="background:rgba(11,18,32,.04);">' +
-                      '<th style="text-align:left; padding:8px 10px;">Company</th>' +
-                      '<th style="text-align:left; padding:8px 10px;">Title</th>' +
-                      '<th style="text-align:left; padding:8px 10px;">Start</th>' +
-                      '<th style="text-align:left; padding:8px 10px;">End</th>' +
-                      '<th style="text-align:left; padding:8px 10px;">Type</th>' +
-                      '<th style="text-align:left; padding:8px 10px;">Conf</th>' +
-                    '</tr>' +
-                  '</thead>' +
-                  '<tbody>' + rows + '</tbody>' +
-                '</table>' +
-              '</div>'
+              '<table style="width:100%; border-collapse:collapse;">' +
+              '<thead><tr style="background:rgba(11,18,32,.04);">' +
+              '<th style="text-align:left; padding:8px 10px;">Company</th>' +
+              '<th style="text-align:left; padding:8px 10px;">Title</th>' +
+              '<th style="text-align:left; padding:8px 10px;">Start</th>' +
+              '<th style="text-align:left; padding:8px 10px;">End</th>' +
+              '<th style="text-align:left; padding:8px 10px;">Type</th>' +
+              '<th style="text-align:left; padding:8px 10px;">Conf</th>' +
+              "</tr></thead>" +
+              "<tbody>" + rows + "</tbody></table></div>"
             );
           }
 
           function renderSkills(p) {
-            const skills = Array.isArray(p?.skills) ? p.skills : [];
+            const skills = Array.isArray(p && p.skills) ? p.skills : [];
             if (!skills.length) return '<div class="fine">No skills extracted.</div>';
-            return '<div class="row" style="gap:8px; flex-wrap:wrap;">' + skills.map(s => chip(s)).join("") + '</div>';
+            return '<div class="row" style="gap:8px; flex-wrap:wrap;">' + skills.map(s => chip(s)).join("") + "</div>";
           }
 
           function renderEducation(p) {
-            const edu = Array.isArray(p?.education) ? p.education : [];
+            const edu = Array.isArray(p && p.education) ? p.education : [];
             if (!edu.length) return '<div class="fine">No education extracted.</div>';
 
             return (
               '<div style="display:grid; grid-template-columns:1fr; gap:10px;">' +
-                edu.map(e => {
-                  const inst = e.institution || "";
-                  const degree = e.degree || "";
-                  const field = e.field || "";
-                  const start = fmtDate(e.startDate);
-                  const end = fmtDate(e.endDate);
-                  const conf = (typeof e.confidence === "number") ? Math.round(e.confidence * 100) + "%" : "";
+              edu.map(function (e) {
+                const inst = e.institution || "";
+                const degree = e.degree || "";
+                const field = e.field || "";
+                const start = fmtDate(e.startDate);
+                const end = fmtDate(e.endDate);
+                const conf = (typeof e.confidence === "number") ? Math.round(e.confidence * 100) + "%" : "";
 
-                  return (
-                    '<div style="padding:12px; border:1px solid var(--border); border-radius:16px; background:rgba(255,255,255,.92); box-shadow:0 8px 20px rgba(11,18,32,.06);">' +
-                      '<div style="font-weight:900;">' + esc(inst) + '</div>' +
-                      '<div class="fine" style="margin-top:6px;">' + esc([degree, field].filter(Boolean).join(" • ")) + '</div>' +
-                      '<div class="row" style="gap:8px; flex-wrap:wrap; margin-top:8px;">' +
-                        chip("Start: " + start) +
-                        chip("End: " + end) +
-                        (conf ? chip("Conf: " + conf) : "") +
-                      '</div>' +
-                    '</div>'
-                  );
-                }).join("") +
-              '</div>'
+                return (
+                  '<div style="padding:12px; border:1px solid var(--border); border-radius:16px; background:rgba(255,255,255,.92); box-shadow:0 8px 20px rgba(11,18,32,.06);">' +
+                  '<div style="font-weight:900;">' + esc(inst) + "</div>" +
+                  '<div class="fine" style="margin-top:6px;">' + esc([degree, field].filter(Boolean).join(" | ")) + "</div>" +
+                  '<div class="row" style="gap:8px; flex-wrap:wrap; margin-top:8px;">' +
+                  chip("Start: " + start) + chip("End: " + end) + (conf ? chip("Conf: " + conf) : "") +
+                  "</div></div>"
+                );
+              }).join("") +
+              "</div>"
             );
           }
+
           async function load() {
-            document.getElementById("headline").textContent = "Loading…";
-            document.getElementById("signals").innerHTML = '<div class="fine">Loading…</div>';
+            const btnCopySummary = document.getElementById("btnCopySummary");
+            const btnCopyQuestions = document.getElementById("btnCopyQuestions");
+
+            document.getElementById("headline").textContent = "Loading...";
+            document.getElementById("signals").innerHTML = '<div class="fine">Loading...</div>';
 
             if (!reportId || reportId === "undefined" || reportId === "null") {
               document.body.innerHTML = "Missing report id. Go back and select a report.";
               throw new Error("Missing report id");
+            }
+
+            // Disable at start
+            if (btnCopySummary) {
+              btnCopySummary.disabled = true;
+              btnCopySummary.style.display = "inline-block";
+              btnCopySummary.textContent = "Preparing summary...";
+              btnCopySummary.onclick = null;
+            }
+            if (btnCopyQuestions) {
+              btnCopyQuestions.disabled = true;
+              btnCopyQuestions.style.display = "none";
+              btnCopyQuestions.onclick = null;
             }
 
             const res = await fetch("/api/trust/report?id=" + encodeURIComponent(reportId));
@@ -391,7 +498,10 @@ export async function renderTrustReportPage(request, env) {
             }
 
             const report = data.report;
-            const signals = data.signals || [];
+            const signals = Array.isArray(data.signals) ? data.signals : [];
+
+            __lastReport = report;
+            __lastSignals = signals;
 
             const score = Number(report.trust_score || 0);
             const bucket = String(report.bucket || "unknown");
@@ -401,22 +511,39 @@ export async function renderTrustReportPage(request, env) {
               "Trust score: <b>" + score + "</b> " + bucketBadge(bucket);
 
             document.getElementById("meta").textContent =
-              "Hard-triggered: " + hard + " • Engine: " + (report.engine_version || "") + " • Created: " + (report.created_at || "");
+              "Hard-triggered: " + hard + " | Engine: " + (report.engine_version || "") + " | Created: " + (report.created_at || "");
 
-            // --- Extracted timeline panel (click-to-open) ---
+            // --- Extracted timeline panel (toggle) ---
             const evalId = report.trust_evaluation_id;
-            document.getElementById("evalMeta").textContent =
-              evalId ? ("Resume interpretation: " + evalId) : "";
+            document.getElementById("evalMeta").textContent = evalId ? ("Resume interpretation: " + evalId) : "";
 
-            const btn = document.getElementById("btnExtracted");
+            const btnExtracted = document.getElementById("btnExtracted");
             const panel = document.getElementById("extractedPanel");
+            let extractedLoaded = false;
 
-            if (evalId) {
-              btn.style.display = "inline-block";
+            if (btnExtracted && panel && evalId) {
+              btnExtracted.style.display = "inline-block";
+              btnExtracted.textContent = "View extracted timeline";
 
-              btn.onclick = async () => {
-                btn.disabled = true;
-                btn.textContent = "Loading extracted timeline…";
+              btnExtracted.onclick = async function () {
+                // collapse
+                if (panel.style.display === "block") {
+                  panel.style.display = "none";
+                  btnExtracted.textContent = "View extracted timeline";
+                  return;
+                }
+
+                // already loaded: just show
+                if (extractedLoaded) {
+                  panel.style.display = "block";
+                  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+                  btnExtracted.textContent = "Hide extracted timeline";
+                  return;
+                }
+
+                // first-time load
+                btnExtracted.disabled = true;
+                btnExtracted.textContent = "Loading extracted timeline...";
                 try {
                   const r = await fetch("/api/trust/evaluation/normalized?id=" + encodeURIComponent(evalId));
                   const d = await readJson(r);
@@ -436,21 +563,22 @@ export async function renderTrustReportPage(request, env) {
                   document.getElementById("exRoles").innerHTML = renderRolesTable(p);
                   document.getElementById("exSkills").innerHTML = renderSkills(p);
                   document.getElementById("exEducation").innerHTML = renderEducation(p);
-
                   document.getElementById("exRaw").textContent = JSON.stringify(p, null, 2);
 
+                  extractedLoaded = true;
                   panel.style.display = "block";
                   panel.scrollIntoView({ behavior: "smooth", block: "start" });
+                  btnExtracted.textContent = "Hide extracted timeline";
                 } finally {
-                  btn.disabled = false;
-                  btn.textContent = "View extracted timeline";
+                  btnExtracted.disabled = false;
                 }
               };
             } else {
-              btn.style.display = "none";
-              panel.style.display = "none";
+              if (btnExtracted) btnExtracted.style.display = "none";
+              if (panel) panel.style.display = "none";
             }
 
+            // Summary pills
             const sum = report.summary || {};
             const summaryEl = document.getElementById("summary");
             summaryEl.innerHTML = [
@@ -459,16 +587,46 @@ export async function renderTrustReportPage(request, env) {
               pill("Tier C: " + (sum.tier_c_count ?? 0), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)")
             ].join("");
 
+            // Signals list
             document.getElementById("signals").innerHTML =
               signals.length ? signals.map(signalCard).join("") : '<div class="fine">No signals triggered.</div>';
+
+            // --- Copy actions (wired AFTER load succeeds) ---
+            const questionsText = buildInterviewQuestions(__lastSignals);
+
+            if (btnCopyQuestions) {
+              btnCopyQuestions.style.display = questionsText ? "inline-block" : "none";
+              btnCopyQuestions.disabled = !questionsText;
+
+              if (questionsText) {
+                btnCopyQuestions.onclick = async function () {
+                  const text = buildInterviewQuestions(__lastSignals);
+                  const ok = await copyToClipboard(text);
+                  showToast(ok ? "Copied interview questions" : "Copy failed");
+                };
+              } else {
+                btnCopyQuestions.onclick = null;
+              }
+            }
+
+            if (btnCopySummary) {
+              btnCopySummary.style.display = "inline-block";
+              btnCopySummary.disabled = false;
+              btnCopySummary.textContent = "Copy recruiter summary";
+              btnCopySummary.onclick = async function () {
+                const text = buildRecruiterSummary(__lastReport, __lastSignals);
+                const ok = await copyToClipboard(text);
+                showToast(ok ? "Copied recruiter summary" : "Copy failed");
+              };
+            }
           }
-  
+
           document.getElementById("refresh").addEventListener("click", load);
-          document.getElementById('logout').addEventListener('click', async () => {
-            await fetch('/auth/logout', { method: 'POST' });
-            window.location.replace('/');
+          document.getElementById("logout").addEventListener("click", async function () {
+            await fetch("/auth/logout", { method: "POST" });
+            window.location.replace("/");
           });
-  
+
           load();
         </script>
       `
