@@ -117,6 +117,7 @@ export interface Env {
         modelUsed: model,
         usage: this.mapUsage(first.usage),
         latencyMs: Date.now() - started,
+        promptVersion: input.promptVersion,
       }
     }
   

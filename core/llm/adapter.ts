@@ -15,12 +15,13 @@ export interface ExtractProfileInput {
   extractor: "pdf-text" | "ocr" | "unknown"
 }
 
-export interface ExtractProfileOutput {
-  normalizedProfile: NormalizedProfile
-  modelUsed: LLMModel
-  usage?: LLMUsage
-  latencyMs?: number
-}
+export type ExtractProfileOutput = {
+  normalizedProfile: any;
+  modelUsed: string;
+  usage?: any;
+  latencyMs?: number;
+  promptVersion?: string;
+};
 
 export interface GenerateReportInput {
   normalizedProfile: NormalizedProfile

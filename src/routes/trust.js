@@ -113,9 +113,47 @@ export async function renderTrustReportPage(request, env) {
           <div class="fine">Trust Report</div>
           <h2 style="margin:6px 0 0;" id="headline">Loading…</h2>
           <div class="fine" id="meta"></div>
-  
+          <div class="fine" id="evalMeta" style="margin-top:6px;"></div>
+
+          <div style="margin-top:10px;">
+            <button class="btn btn-ghost" id="btnExtracted" type="button" style="display:none;">
+              View extracted timeline
+            </button>
+          </div>
+
+          <div class="card" id="extractedPanel" style="margin-top:12px; display:none;">
+            <div class="fine">Extracted timeline and details</div>
+
+            <div id="exCandidate" style="margin-top:10px;"></div>
+
+            <div class="divider"></div>
+
+            <div class="fine">Experience timeline</div>
+            <div id="exRoles" style="margin-top:8px;"></div>
+
+            <div class="divider"></div>
+
+            <div class="fine">Skills</div>
+            <div id="exSkills" style="margin-top:8px;"></div>
+
+            <div class="divider"></div>
+
+            <div class="fine">Education</div>
+            <div id="exEducation" style="margin-top:8px;"></div>
+
+            <div class="divider"></div>
+
+            <details>
+              <summary class="fine">Show raw extracted JSON</summary>
+              <pre id="exRaw"
+                style="white-space:pre-wrap; background:rgba(11,18,32,.04);
+                border:1px solid var(--border); border-radius:14px; padding:10px;
+                overflow:auto; margin-top:10px;"></pre>
+            </details>
+          </div>
+
           <div class="divider"></div>
-  
+
           <div id="summary" class="row" style="gap:10px; flex-wrap:wrap;"></div>
   
           <div class="divider"></div>
@@ -205,39 +243,214 @@ export async function renderTrustReportPage(request, env) {
               '</div>'
             );
           }
-  
+          function fmtDate(d) {
+            if (!d) return "Present";
+            return String(d);
+          }
+
+          function chip(text) {
+            return '<span class="pill" style="background:rgba(11,18,32,.06); border-color:var(--border); color:var(--muted);">' + esc(text) + '</span>';
+          }
+
+          function warnChip(text) {
+            return '<span class="pill" style="background:rgba(245,158,11,.10); border-color:rgba(245,158,11,.26); color:#8a5a00;">' + esc(text) + '</span>';
+          }
+
+          function okChip(text) {
+            return '<span class="pill" style="background:rgba(12,122,75,.10); border-color:rgba(12,122,75,.25); color:#0c7a4b;">' + esc(text) + '</span>';
+          }
+
+          function renderCandidateCard(p) {
+            const c = p?.candidate || {};
+            const meta = p?.meta || {};
+            const conf = meta?.extractionConfidence;
+
+            const warnings = Array.isArray(meta?.parsingWarnings) ? meta.parsingWarnings : [];
+            const warningHtml = warnings.length
+              ? '<div class="row" style="gap:8px; flex-wrap:wrap; margin-top:8px;">' + warnings.map(w => warnChip(w)).join("") + '</div>'
+              : '<div class="fine" style="margin-top:8px;">No parsing warnings.</div>';
+
+            const confHtml = (typeof conf === "number")
+              ? okChip("Extraction confidence: " + Math.round(conf * 100) + "%")
+              : chip("Extraction confidence: n/a");
+
+            const contactBits = [
+              c.email ? chip("Email: " + c.email) : "",
+              c.phone ? chip("Phone: " + c.phone) : "",
+              c.linkedin ? chip("LinkedIn: " + c.linkedin) : ""
+            ].filter(Boolean).join("");
+
+            return (
+              '<div style="padding:12px; border:1px solid var(--border); border-radius:16px; background:rgba(255,255,255,.92); box-shadow:0 8px 20px rgba(11,18,32,.06);">' +
+                '<div style="font-weight:900; font-size:16px;">' + esc(c.name || "Candidate") + '</div>' +
+                '<div class="row" style="gap:8px; flex-wrap:wrap; margin-top:8px;">' +
+                  confHtml +
+                  contactBits +
+                '</div>' +
+                warningHtml +
+              '</div>'
+            );
+          }
+
+          function renderRolesTable(p) {
+            const roles = Array.isArray(p?.roles) ? p.roles : [];
+            if (!roles.length) return '<div class="fine">No roles extracted.</div>';
+
+            const rows = roles.map(r => {
+              const company = r.company || "";
+              const title = r.title || "";
+              const start = fmtDate(r.startDate);
+              const end = fmtDate(r.endDate);
+              const typ = r.employmentType || "";
+              const conf = (typeof r.confidence === "number") ? Math.round(r.confidence * 100) + "%" : "";
+              const loc = r.location || "";
+
+              return (
+                '<tr>' +
+                  '<td style="padding:8px 10px; border-top:1px solid var(--border);"><b>' + esc(company) + '</b><div class="fine">' + esc(loc) + '</div></td>' +
+                  '<td style="padding:8px 10px; border-top:1px solid var(--border);">' + esc(title) + '</td>' +
+                  '<td style="padding:8px 10px; border-top:1px solid var(--border); white-space:nowrap;">' + esc(start) + '</td>' +
+                  '<td style="padding:8px 10px; border-top:1px solid var(--border); white-space:nowrap;">' + esc(end) + '</td>' +
+                  '<td style="padding:8px 10px; border-top:1px solid var(--border); white-space:nowrap;">' + esc(typ) + '</td>' +
+                  '<td style="padding:8px 10px; border-top:1px solid var(--border); white-space:nowrap;">' + esc(conf) + '</td>' +
+                '</tr>'
+              );
+            }).join("");
+
+            return (
+              '<div style="border:1px solid var(--border); border-radius:14px; overflow:hidden; background:rgba(255,255,255,.92);">' +
+                '<table style="width:100%; border-collapse:collapse;">' +
+                  '<thead>' +
+                    '<tr style="background:rgba(11,18,32,.04);">' +
+                      '<th style="text-align:left; padding:8px 10px;">Company</th>' +
+                      '<th style="text-align:left; padding:8px 10px;">Title</th>' +
+                      '<th style="text-align:left; padding:8px 10px;">Start</th>' +
+                      '<th style="text-align:left; padding:8px 10px;">End</th>' +
+                      '<th style="text-align:left; padding:8px 10px;">Type</th>' +
+                      '<th style="text-align:left; padding:8px 10px;">Conf</th>' +
+                    '</tr>' +
+                  '</thead>' +
+                  '<tbody>' + rows + '</tbody>' +
+                '</table>' +
+              '</div>'
+            );
+          }
+
+          function renderSkills(p) {
+            const skills = Array.isArray(p?.skills) ? p.skills : [];
+            if (!skills.length) return '<div class="fine">No skills extracted.</div>';
+            return '<div class="row" style="gap:8px; flex-wrap:wrap;">' + skills.map(s => chip(s)).join("") + '</div>';
+          }
+
+          function renderEducation(p) {
+            const edu = Array.isArray(p?.education) ? p.education : [];
+            if (!edu.length) return '<div class="fine">No education extracted.</div>';
+
+            return (
+              '<div style="display:grid; grid-template-columns:1fr; gap:10px;">' +
+                edu.map(e => {
+                  const inst = e.institution || "";
+                  const degree = e.degree || "";
+                  const field = e.field || "";
+                  const start = fmtDate(e.startDate);
+                  const end = fmtDate(e.endDate);
+                  const conf = (typeof e.confidence === "number") ? Math.round(e.confidence * 100) + "%" : "";
+
+                  return (
+                    '<div style="padding:12px; border:1px solid var(--border); border-radius:16px; background:rgba(255,255,255,.92); box-shadow:0 8px 20px rgba(11,18,32,.06);">' +
+                      '<div style="font-weight:900;">' + esc(inst) + '</div>' +
+                      '<div class="fine" style="margin-top:6px;">' + esc([degree, field].filter(Boolean).join(" • ")) + '</div>' +
+                      '<div class="row" style="gap:8px; flex-wrap:wrap; margin-top:8px;">' +
+                        chip("Start: " + start) +
+                        chip("End: " + end) +
+                        (conf ? chip("Conf: " + conf) : "") +
+                      '</div>' +
+                    '</div>'
+                  );
+                }).join("") +
+              '</div>'
+            );
+          }
           async function load() {
             document.getElementById("headline").textContent = "Loading…";
             document.getElementById("signals").innerHTML = '<div class="fine">Loading…</div>';
 
             if (!reportId || reportId === "undefined" || reportId === "null") {
-              // show friendly message or redirect back to profiles
-              document.body.innerHTML = "Missing report id. Go back and select a report."
-              throw new Error("Missing report id")
+              document.body.innerHTML = "Missing report id. Go back and select a report.";
+              throw new Error("Missing report id");
             }
+
             const res = await fetch("/api/trust/report?id=" + encodeURIComponent(reportId));
             const data = await readJson(res);
-  
+
             if (!res.ok) {
               document.getElementById("headline").textContent = "Failed to load";
               document.getElementById("meta").textContent = data.error || "Error";
               document.getElementById("signals").innerHTML = "";
               return;
             }
-  
+
             const report = data.report;
             const signals = data.signals || [];
-  
+
             const score = Number(report.trust_score || 0);
             const bucket = String(report.bucket || "unknown");
             const hard = report.hard_triggered ? "Yes" : "No";
-  
+
             document.getElementById("headline").innerHTML =
               "Trust score: <b>" + score + "</b> " + bucketBadge(bucket);
-  
+
             document.getElementById("meta").textContent =
               "Hard-triggered: " + hard + " • Engine: " + (report.engine_version || "") + " • Created: " + (report.created_at || "");
-  
+
+            // --- Extracted timeline panel (click-to-open) ---
+            const evalId = report.trust_evaluation_id;
+            document.getElementById("evalMeta").textContent =
+              evalId ? ("Resume interpretation: " + evalId) : "";
+
+            const btn = document.getElementById("btnExtracted");
+            const panel = document.getElementById("extractedPanel");
+
+            if (evalId) {
+              btn.style.display = "inline-block";
+
+              btn.onclick = async () => {
+                btn.disabled = true;
+                btn.textContent = "Loading extracted timeline…";
+                try {
+                  const r = await fetch("/api/trust/evaluation/normalized?id=" + encodeURIComponent(evalId));
+                  const d = await readJson(r);
+
+                  if (!r.ok) {
+                    alert(d.error || "Failed to load extracted profile");
+                    return;
+                  }
+
+                  const p = d.llm_normalized_profile;
+                  if (!p) {
+                    alert("No extracted profile available (may have fallen back).");
+                    return;
+                  }
+
+                  document.getElementById("exCandidate").innerHTML = renderCandidateCard(p);
+                  document.getElementById("exRoles").innerHTML = renderRolesTable(p);
+                  document.getElementById("exSkills").innerHTML = renderSkills(p);
+                  document.getElementById("exEducation").innerHTML = renderEducation(p);
+
+                  document.getElementById("exRaw").textContent = JSON.stringify(p, null, 2);
+
+                  panel.style.display = "block";
+                  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+                } finally {
+                  btn.disabled = false;
+                  btn.textContent = "View extracted timeline";
+                }
+              };
+            } else {
+              btn.style.display = "none";
+              panel.style.display = "none";
+            }
+
             const sum = report.summary || {};
             const summaryEl = document.getElementById("summary");
             summaryEl.innerHTML = [
@@ -245,7 +458,7 @@ export async function renderTrustReportPage(request, env) {
               pill("Tier B: " + (sum.tier_b_count ?? 0), "rgba(245,158,11,.10)", "rgba(245,158,11,.26)", "#8a5a00"),
               pill("Tier C: " + (sum.tier_c_count ?? 0), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)")
             ].join("");
-  
+
             document.getElementById("signals").innerHTML =
               signals.length ? signals.map(signalCard).join("") : '<div class="fine">No signals triggered.</div>';
           }
@@ -1237,11 +1450,46 @@ export async function apiTrustRun(request, env) {
         now
       ).run()
     }
+      // 2.5) Persist evaluation artifact (LLM normalized + deterministic profile)
+    const evalId = crypto.randomUUID()
 
+    await env.DB.prepare(
+      `INSERT INTO trust_evaluations
+       (id, trust_profile_id, trust_report_id,
+        engine_version, signals_version, profile_schema_version, prompt_version, model,
+        extraction_source, extraction_error,
+        llm_meta_json, llm_normalized_json, deterministic_profile_json,
+        created_at)
+       VALUES (?1, ?2, ?3,
+               ?4, ?5, ?6, ?7, ?8,
+               ?9, ?10,
+               ?11, ?12, ?13,
+               ?14)`
+    ).bind(
+      evalId,
+      trustProfileId,
+      trustReportId,
+
+      String(result?.engineVersion ?? "trust_engine_unknown"),
+      "signals_v1",
+      "normalized_profile_schema_v1", // your schema identity (keep simple for now)
+      String((result?.llm?.promptVersion) ?? "prompt_extract_v?"), // optional; see note below
+      String(result?.llm?.modelUsed ?? "gpt-4o-mini"),
+
+      String(result?.extractionSource ?? "fallback"),
+      result?.extractionError ? String(result.extractionError) : null,
+
+      JSON.stringify(result?.llm ?? null),
+      JSON.stringify(result?.llmNormalizedProfile ?? null),
+      JSON.stringify(result?.deterministicProfile ?? null),
+
+      now
+    ).run()
     // 3) Return report id to frontend
     return json({
       ok: true,
       trust_report_id: trustReportId,
+      trust_evaluation_id: evalId,
     })
   }
 
@@ -1392,8 +1640,24 @@ export async function apiTrustReport(request, env) {
     if (!id) return json({ error: "id required" }, 400);
   
     const report = await env.DB.prepare(
-      `SELECT id, trust_profile_id, trust_score, bucket, hard_triggered, summary_json, engine_version, created_at
-       FROM trust_reports WHERE id = ?`
+      `SELECT
+          r.id,
+          r.trust_profile_id,
+          r.trust_score,
+          r.bucket,
+          r.hard_triggered,
+          r.summary_json,
+          r.engine_version,
+          r.created_at,
+          (
+            SELECT e.id
+            FROM trust_evaluations e
+            WHERE e.trust_report_id = r.id
+            ORDER BY e.created_at DESC
+            LIMIT 1
+          ) AS trust_evaluation_id
+       FROM trust_reports r
+       WHERE r.id = ?`
     ).bind(id).first();
   
     if (!report) return json({ error: "report not found" }, 404);
@@ -1430,10 +1694,67 @@ export async function apiTrustReport(request, env) {
         hard_triggered: !!report.hard_triggered,
         summary: safeJsonParse(report.summary_json) || {},
         engine_version: report.engine_version,
-        created_at: report.created_at
+        created_at: report.created_at,
+        trust_evaluation_id: report.trust_evaluation_id || null
       },
       signals
     });
 }
 export { apiTrustDebugProfile } from "../engine/signals_v1.js";
-  
+
+export async function apiTrustEvaluation(request, env) {
+  const sess = await requireSession(request, env);
+  if (!sess) return json({ error: "unauthorized" }, 401);
+
+  const allowed = isRecruiter(sess, env) || isAdmin(sess, env);
+  if (!allowed) return json({ error: "forbidden" }, 403);
+
+  const url = new URL(request.url);
+  const id = (url.searchParams.get("id") || "").trim();
+  if (!id) return json({ error: "id required" }, 400);
+
+  const row = await env.DB.prepare(
+    `SELECT id, trust_profile_id, trust_report_id,
+            engine_version, signals_version, profile_schema_version, prompt_version, model,
+            extraction_source, extraction_error,
+            llm_meta_json,
+            created_at
+     FROM trust_evaluations
+     WHERE id = ?1`
+  ).bind(id).first();
+
+  if (!row) return json({ error: "evaluation not found" }, 404);
+
+  return json({
+    evaluation: {
+      ...row,
+      llm_meta: safeJsonParse(row.llm_meta_json) || null,
+    }
+  });
+}
+
+export async function apiTrustEvaluationNormalized(request, env) {
+  const sess = await requireSession(request, env);
+  if (!sess) return json({ error: "unauthorized" }, 401);
+
+  const allowed = isRecruiter(sess, env) || isAdmin(sess, env);
+  if (!allowed) return json({ error: "forbidden" }, 403);
+
+  const url = new URL(request.url);
+  const id = (url.searchParams.get("id") || "").trim();
+  if (!id) return json({ error: "id required" }, 400);
+
+  const row = await env.DB.prepare(
+    `SELECT id, llm_normalized_json, deterministic_profile_json
+     FROM trust_evaluations
+     WHERE id = ?1`
+  ).bind(id).first();
+
+  if (!row) return json({ error: "evaluation not found" }, 404);
+
+  return json({
+    evaluation_id: row.id,
+    llm_normalized_profile: safeJsonParse(row.llm_normalized_json) || null,
+    deterministic_profile: safeJsonParse(row.deterministic_profile_json) || null,
+  });
+}

@@ -20,7 +20,9 @@ export async function runTrustPipeline(args: {
 
   const llm = new OpenAIWorkerAdapter({ apiKey: env.OPENAI_API_KEY })
 
-  let profile: any
+  let profileLLMLegacy: any = null
+  let llmNormalizedProfile: any = null
+
   let extractionSource: "llm" | "fallback" = "llm"
   let extractionError: string | null = null
   let llmMeta: any = null
@@ -36,10 +38,11 @@ export async function runTrustPipeline(args: {
 
     const normalized = out.normalizedProfile
 
-    // IMPORTANT:
-    // Your signals expect profile.experience, profile.education etc.
-    // So we convert LLM normalizedProfile → legacy profile shape.
-    profile = {
+    // ✅ Keep the real LLM normalized profile for UI (schema-based)
+    llmNormalizedProfile = normalized
+
+    // ✅ Also keep a legacy-mapped version (optional; useful for debugging)
+    profileLLMLegacy = {
       candidate_id: candidateId,
       __source_text: sourceText,
       __source_filename: sourceFilename ?? null,
@@ -82,12 +85,8 @@ export async function runTrustPipeline(args: {
     extractionSource = "fallback"
     extractionError = msg
   
-    profile = normalizeResumeTextToProfileV1({
-      candidateId,
-      sourceText,
-      sourceFilename: sourceFilename ?? "",
-      now,
-    })
+    profileLLMLegacy = null
+    llmNormalizedProfile = null
   }
 
   // 3️⃣ Run signals on deterministic normalization (best month precision)
@@ -109,14 +108,21 @@ export async function runTrustPipeline(args: {
   const scoring = scoreAndBucketV1(triggeredSignals)
 
   // Optional but recommended: use deterministic profile for report rendering
-  profile = profileForSignals
-
   return {
     engineVersion: ENGINE_VERSION,
     extractionSource,
     extractionError,
     llm: llmMeta,
-    profile,
+
+    // ✅ what UI wants to render (schema-based)
+    llmNormalizedProfile,
+
+    // ✅ what signals/scoring actually used
+    deterministicProfile: profileForSignals,
+
+    // ✅ (optional) useful for debugging LLM mapping
+    llmLegacyProfile: profileLLMLegacy,
+
     triggeredSignals,
     scoring,
   }

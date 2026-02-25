@@ -34,7 +34,9 @@ import {
   apiTrustReport,
   apiTrustProfiles,
   apiTrustProfile,
-  apiTrustDebugProfile
+  apiTrustDebugProfile,
+  apiTrustEvaluation,
+  apiTrustEvaluationNormalized,
 } from "./routes/trust.js";
 
 
@@ -221,6 +223,13 @@ export default {
       return apiTrustProfiles(request, env);
     }
     if (path === "/api/trust/profile" && request.method === "GET") return apiTrustProfile(request, env);
+    if (path === "/api/trust/evaluation" && request.method === "GET") {
+      return apiTrustEvaluation(request, env);
+    }
+    if (path === "/api/trust/evaluation/normalized" && request.method === "GET") {
+      return apiTrustEvaluationNormalized(request, env);
+    }
+
     if (path === "/api/debug/colo" && request.method === "GET") {
       return Response.json({
         cf: (request as any).cf ?? null,
