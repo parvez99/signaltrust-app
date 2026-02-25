@@ -66,11 +66,22 @@ export async function runTrustPipeline(args: {
       latencyMs: out.latencyMs,
       extractionConfidence: normalized.meta?.extractionConfidence,
     }
-  } catch (err) {
-    // 2️⃣ Fallback to deterministic normalize
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "UNKNOWN_ERROR"
+  
+    const retryable =
+      msg.includes("OPENAI_ERROR_429") ||
+      msg.includes("OPENAI_ERROR_5") ||
+      msg === "OPENAI_TIMEOUT"
+  
+    if (!retryable) {
+      // Programming error / schema bug / bad request
+      throw err
+    }
+  
     extractionSource = "fallback"
-    extractionError = err instanceof Error ? err.message : "UNKNOWN_ERROR"
-
+    extractionError = msg
+  
     profile = normalizeResumeTextToProfileV1({
       candidateId,
       sourceText,

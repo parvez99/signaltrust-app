@@ -20,6 +20,28 @@ export interface Env {
     total_tokens?: number
   }
   
+  function sleep(ms: number) {
+    return new Promise((r) => setTimeout(r, ms))
+  }
+  
+  function jitter(ms: number) {
+    const j = Math.floor(Math.random() * Math.min(250, ms))
+    return ms + j
+  }
+  
+  function isRetryableStatus(status: number) {
+    return status === 429 || status === 408 || (status >= 500 && status <= 599)
+  }
+  
+  function parseOpenAIErrorMessage(bodyText: string): string | null {
+    try {
+      const j = JSON.parse(bodyText)
+      return j?.error?.message ?? null
+    } catch {
+      return null
+    }
+  }
+
   export class OpenAIWorkerAdapter implements LLMAdapter {
     private apiKey: string
     private baseUrl: string
@@ -38,18 +60,20 @@ export interface Env {
   
       const payload = {
         model,
-        // Keep this deterministic
         temperature: 0,
         input: [
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        // Strict schema output
-        response_format: {
-          type: "json_schema",
-          json_schema: normalizedProfileSchema,
+        text: {
+          format: {
+            type: "json_schema",
+            name: normalizedProfileSchema.name,
+            strict: true,
+            schema: normalizedProfileSchema.schema,
+          },
         },
-      }
+      };
   
       // Retry strategy:
       // 1) Normal attempt
@@ -108,27 +132,78 @@ export interface Env {
     }
   
     private async callResponses(body: unknown): Promise<any> {
-      const res = await fetch(`${this.baseUrl}/responses`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      })
-  
-      const text = await res.text()
-  
-      if (!res.ok) {
-        // Helpful for debugging. Don’t log PII in production logs.
-        throw new Error(`OPENAI_ERROR_${res.status}: ${text.slice(0, 400)}`)
+      // Tuneables (can later move to env vars)
+      const timeoutMs = Number((globalThis as any)?.process?.env?.OPENAI_TIMEOUT_MS || 25000)
+      const maxAttempts = Number((globalThis as any)?.process?.env?.OPENAI_MAX_ATTEMPTS || 3)
+
+      let lastErr: unknown = null
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const controller = new AbortController()
+        const t = setTimeout(() => controller.abort(), timeoutMs)
+
+        try {
+          const res = await fetch(`${this.baseUrl}/responses`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${this.apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          })
+
+          const text = await res.text()
+
+          if (!res.ok) {
+            const msg = parseOpenAIErrorMessage(text)
+            const errStr = `OPENAI_ERROR_${res.status}: ${(msg ?? text).slice(0, 400)}`
+
+            // Retry only if status is retryable
+            if (isRetryableStatus(res.status) && attempt < maxAttempts) {
+              // exponential backoff: 500ms, 1000ms, 2000ms (+ jitter)
+              const backoff = jitter(500 * Math.pow(2, attempt - 1))
+              await sleep(backoff)
+              continue
+            }
+
+            throw new Error(errStr)
+          }
+
+          try {
+            return JSON.parse(text)
+          } catch {
+            throw new Error("OPENAI_NON_JSON_RESPONSE")
+          }
+        } catch (e: any) {
+          lastErr = e
+
+          const isAbort = e?.name === "AbortError"
+          const isNetwork = typeof e?.message === "string" && (
+            e.message.includes("fetch failed") ||
+            e.message.includes("ECONNRESET") ||
+            e.message.includes("ENOTFOUND") ||
+            e.message.includes("ETIMEDOUT")
+          )
+
+          // Retry timeouts and transient network errors
+          if ((isAbort || isNetwork) && attempt < maxAttempts) {
+            const backoff = jitter(500 * Math.pow(2, attempt - 1))
+            await sleep(backoff)
+            continue
+          }
+
+          // Surface clean timeout error
+          if (isAbort) throw new Error("OPENAI_TIMEOUT")
+
+          throw e
+        } finally {
+          clearTimeout(t)
+        }
       }
-  
-      try {
-        return JSON.parse(text)
-      } catch {
-        throw new Error("OPENAI_NON_JSON_RESPONSE")
-      }
+
+      // Shouldn’t happen, but keep it safe
+      throw lastErr instanceof Error ? lastErr : new Error("OPENAI_UNKNOWN_ERROR")
     }
   
     /**
