@@ -12,6 +12,24 @@
 import { normalizeWhitespace } from "../lib/utils.js"
 import { parseSingleYearFromLine } from "../engine/signals_v1.js"
 
+function prevNonEmptyLine(lines, idx) {
+  for (let k = idx - 1; k >= 0; k--) {
+    const s = (lines[k] || "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+function looksLikeLocationToken(s) {
+  const x = String(s || "").trim();
+  if (!x) return false;
+  if (x.length > 30) return false;
+  if (/[0-9]/.test(x)) return false;
+  if (/ - |–|—/.test(x)) return false;
+  if (/\b(engineer|developer|manager|lead|senior|director|vp|head|architect|intern|consultant)\b/i.test(x)) return false;
+  return true;
+}
+
 function coalesceWrappedMonthYearLines(lines) {
   const out = [];
   const monthRe = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b\.?$/i;
@@ -229,45 +247,49 @@ export function extractExperienceBlocks(lines, mkEv) {
       const dr = parseDateRangeFromLine(line);
       if (!dr) continue;
       
-      // Default: the line itself (your CV has date+company+title on one line)
-      let contextLine = line;
+      // 🔥 Direct structural extraction
+      const companyLine = (lines[i - 1] || "").trim();
+      const titleLine   = (lines[i - 2] || "").trim();
       
-      let parsed = parseCompanyTitleFromDatedLine(line);
+      // Safety checks
+      if (!companyLine || !titleLine) continue;
+      if (parseDateRangeFromLine(companyLine)) continue;
+      if (/^(experience|education|projects|skills|certifications)/i.test(companyLine)) continue;
       
-      // fallback if the dated line parse didn't yield anything
-      if (!parsed.titleRaw && !parsed.companyRaw) {
-        contextLine = findNearestContextLine(lines, i);
-        parsed = parseCompanyTitleFromDatedLine(contextLine);
+      let finalCompany = "";
+      let finalLocation = "";
+      
+      if (companyLine.includes(",")) {
+        const parts = companyLine.split(",");
+        finalCompany = parts[0].trim();
+        finalLocation = parts.slice(1).join(",").trim();
+      } else {
+        finalCompany = companyLine;
       }
       
-      // ✅ guard: reject obvious non-job context lines
-      if (looksLikeNonJobContext(contextLine)) continue;
+      const finalTitle = cleanTitle(titleLine);
       
       const expId = "exp_" + (out.length + 1);
-      
-      const titleClean = cleanTitle(parsed.titleRaw || "");
-      const companyClean = (parsed.companyRaw || "").trim();
       
       out.push({
         exp_id: expId,
         company: {
-          raw: companyClean,
-          normalized: companyClean.toLowerCase(),
+          raw: finalCompany,
+          normalized: finalCompany.toLowerCase(),
           domain_hint: null
         },
         title: {
-          raw: titleClean,
-          normalized: titleClean.toLowerCase(),
-          seniority_band: inferSeniorityBand(titleClean)
+          raw: finalTitle,
+          normalized: finalTitle.toLowerCase(),
+          seniority_band: inferSeniorityBand(finalTitle)
         },
+        location_raw: finalLocation,
         employment_type: { raw: "", normalized: "unknown", inferred: true },
         start_date: dr.start,
         end_date: dr.end,
         is_current: dr.end.iso === null,
-        location_raw: "",
-        evidence: [mkEv(`${contextLine}\n${line}`.trim())]
-      });
-      
+        evidence: [mkEv(`${titleLine}\n${companyLine}\n${line}`)]
+      });      
     }
   
     const merged = mergeDuplicateExperience(out);

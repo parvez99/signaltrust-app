@@ -1448,7 +1448,6 @@ export async function apiTrustIngest(request, env) {
     }
   
     const now = new Date().toISOString();
-    const trustProfileId = crypto.randomUUID();
   
     // Normalize now (portable pure function)
     const normalized = normalizeResumeTextToProfileV1({
@@ -1459,13 +1458,51 @@ export async function apiTrustIngest(request, env) {
     });
     const docHashV = "v1";
     const docHash = await sha256Hex(normalizeForDocHash(text));
+    if (!docHash) {
+      return json({ error: "doc_hash_missing" }, 500);
+    }
+
+    // ✅ DEDUPE: if same candidate uploads identical content, reuse existing profile id
+    const existing = await env.DB.prepare(
+      `SELECT id
+       FROM trust_candidate_profiles
+       WHERE created_by_candidate_id = ?1 AND doc_hash = ?2
+       ORDER BY created_at DESC
+       LIMIT 1`
+    ).bind(sess.candidate_id, docHash).first();
+
+    if (existing?.id) {
+      // Return latest report id too (so UI can skip /run if already evaluated)
+      const latest = await env.DB.prepare(
+        `SELECT id
+         FROM trust_reports
+         WHERE trust_profile_id = ?1
+         ORDER BY created_at DESC
+         LIMIT 1`
+      ).bind(existing.id).first();
+
+      return json({
+        ok: true,
+        trust_profile_id: existing.id,
+        duplicate: true,
+        latest_report_id: latest?.id ?? null,
+      });
+    }
+
+    // No duplicate: create a new profile row
+    const trustProfileId = crypto.randomUUID();
+
     await env.DB.prepare(
-        `INSERT INTO trust_candidate_profiles
-         (id, org_id, created_by_candidate_id, source_type, source_filename, source_text, normalized_json,
-          doc_hash, doc_hash_v,
-          created_at, updated_at, extractor)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(
+      `INSERT INTO trust_candidate_profiles
+       (id, org_id, created_by_candidate_id, source_type, source_filename, source_text, normalized_json,
+        doc_hash, doc_hash_v,
+        created_at, updated_at, extractor)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(created_by_candidate_id, doc_hash)
+       DO UPDATE SET
+         updated_at = excluded.updated_at,
+         source_filename = excluded.source_filename`
+    ).bind(
       trustProfileId,
       null,
       sess.candidate_id,
@@ -1479,8 +1516,20 @@ export async function apiTrustIngest(request, env) {
       now,
       extractor
     ).run();
-  
-    return json({ ok: true, trust_profile_id: trustProfileId });
+
+    const row = await env.DB.prepare(
+      `SELECT id FROM trust_candidate_profiles
+       WHERE created_by_candidate_id = ?1 AND doc_hash = ?2
+       ORDER BY created_at DESC
+       LIMIT 1`
+    ).bind(sess.candidate_id, docHash).first();
+
+    return json({
+      ok: true,
+      trust_profile_id: row?.id ?? trustProfileId,
+      // if row.id differs from the new UUID, it means conflict happened
+      duplicate: row?.id ? row.id !== trustProfileId : false,
+    });
 }
 
 export async function apiTrustRun(request, env) {
@@ -1573,16 +1622,23 @@ export async function apiTrustRun(request, env) {
       now
     ).run()
 
-    // 2) Insert trust_signals (store ALL signals, but keep true status)
+    // 2) Insert trust_signals (store only signals that apply)
     for (const sig of (result.triggeredSignals || [])) {
       const deduction = Number(sig?.deduction || 0)
       const hard = !!sig?.hard_trigger
-      const status =
-        typeof sig?.status === "string"
-          ? sig.status
-          : (deduction !== 0 || hard ? "triggered" : "not_triggered")
-      
-      // ✅ Only keep signals that actually apply
+
+      // If status is explicitly present, trust it.
+      // Otherwise infer "triggered" more safely (supports "triggered but 0 deduction" info signals).
+      const hasExplicitStatus = typeof sig?.status === "string"
+      const inferredTriggered =
+        (deduction > 0) ||
+        hard ||
+        (sig?.evidence && Object.keys(sig.evidence).length > 0)
+
+      const status = hasExplicitStatus
+        ? sig.status
+        : (inferredTriggered ? "triggered" : "not_triggered")
+
       const applies = status === "triggered"
       if (!applies) continue
 
@@ -1599,8 +1655,8 @@ export async function apiTrustRun(request, env) {
         String(sig.category),
         String(sig.severity_tier),
         String(sig.confidence || "low"),
-        Number(sig.deduction || 0),
-        sig.hard_trigger ? 1 : 0,
+        deduction,
+        hard ? 1 : 0,
         status,
         JSON.stringify(sig.evidence || {}),
         String(sig.explanation || ""),
@@ -1741,7 +1797,7 @@ export async function apiTrustProfiles(request, env) {
           (SELECT COUNT(1)
            FROM trust_candidate_profiles p2
            WHERE p2.created_by_candidate_id = p.created_by_candidate_id
-             AND p2.source_filename = p.source_filename
+             AND p2.doc_hash = p.doc_hash
           ) AS ingest_count,
       
           (SELECT COUNT(1) FROM trust_reports r WHERE r.trust_profile_id = p.id) AS report_count,
@@ -1758,7 +1814,7 @@ export async function apiTrustProfiles(request, env) {
             SELECT MAX(p3.created_at)
             FROM trust_candidate_profiles p3
             WHERE p3.created_by_candidate_id = p.created_by_candidate_id
-              AND p3.source_filename = p.source_filename
+              AND p3.doc_hash = p.doc_hash
           )
         ORDER BY p.created_at DESC
         LIMIT 20

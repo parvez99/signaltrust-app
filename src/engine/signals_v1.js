@@ -12,15 +12,16 @@ import {
     sliceSection,
 } from "../engine/normalize_v1.js"
 export function defaultSignalConfigV1() {
-    return {
-      enabled: {
-        timeline_overlap: true,
-        gap_gt_6mo: true,
-        gap_after_edu_to_first_role: true,
-        duplicate_roles: true,
-        duplicate_resume_upload: true,
-      }
-    };
+  return {
+    enabled: {
+      timeline_overlap: true,
+      gap_gt_6mo: true,
+      gap_after_edu_to_first_role: true,
+      duplicate_roles: true,
+      duplicate_resume_upload: true,
+      career_velocity: true,
+    }
+  };
 }
 
 export function runSignalsV1(profile, config, ctx = {}) {
@@ -32,7 +33,7 @@ export function runSignalsV1(profile, config, ctx = {}) {
   if (config.enabled.duplicate_roles) out.push(signalDuplicateRoles(profile, ctx));
   if (config.enabled.duplicate_resume_upload) out.push(signalDuplicateResumeUpload(profile));
 
-  // ✅ Anti-double-counting: early-career "gap after edu" overlaps with "gap between roles"
+  if (config.enabled.career_velocity) out.push(signalCareerVelocity(profile));
   return dedupeEarlyCareerGaps(out);
 }
 
@@ -75,14 +76,17 @@ function dedupeEarlyCareerGaps(signals) {
 }
   
 export function signalTitle(id) {
-    const map = {
-      timeline_overlap: "Overlapping Roles",
-      gap_gt_6mo: "Unexplained Gap > 6 Months",
-      gap_after_edu_to_first_role: "Gap after education before first role",
-      duplicate_roles: "Duplicate Role Entries", // ✅ add
-      duplicate_resume_upload: "Duplicate Resume Upload (Cross-Upload)",
-    };
-    return map[id] || id;
+  const map = {
+    timeline_overlap: "Overlapping Roles",
+    gap_gt_6mo: "Unexplained Gap > 6 Months",
+    gap_after_edu_to_first_role: "Gap after education before first role",
+    duplicate_roles: "Duplicate Role Entries",
+    duplicate_resume_upload: "Duplicate Resume Upload (Cross-Upload)",
+
+    // ✅ NEW
+    career_velocity: "Career Velocity Anomaly",
+  };
+  return map[id] || id;
 }
 
 export function signalDuplicateRoles(profile, ctx = {}) {
@@ -704,3 +708,87 @@ export function signalDuplicateResumeUpload(profile) {
   });
 }
 
+export function signalCareerVelocity(profile) {
+  const roles = Array.isArray(profile.experience) ? profile.experience : [];
+  const dated = roles.filter((r) => r?.start_date?.iso);
+
+  if (dated.length < 2) {
+    return makeSignal({
+      signal_id: "career_velocity",
+      title: "Career Velocity Anomaly",
+      category: "career_plausibility",
+      severity_tier: "B",
+      confidence: "low",
+      deduction: 0,
+      hard_trigger: false,
+      status: "not_triggered",
+      evidence: {},
+      explanation: "Not enough dated roles to assess career velocity (MVP).",
+      suggested_questions: []
+    });
+  }
+
+  // sort by earliest possible start (handles year/month precision)
+  const sorted = dated.slice().sort((a, b) =>
+    earliestPossibleStartMs(a.start_date) - earliestPossibleStartMs(b.start_date)
+  );
+
+  const first = sorted[0];
+  const firstMs = earliestPossibleStartMs(first.start_date);
+
+  const isSenior = (t) => /\b(senior|sr\.?)\b/i.test(t || "");
+  const isDirectorPlus = (t) => /\b(director|head|vp|vice president|principal|staff)\b/i.test(t || "");
+
+  let hit = null;
+
+  for (const r of sorted) {
+    const startMs = earliestPossibleStartMs(r.start_date);
+    if (!Number.isFinite(startMs) || !Number.isFinite(firstMs)) continue;
+
+    const years = (startMs - firstMs) / (1000 * 60 * 60 * 24 * 365);
+    const title = (typeof r?.title === "string" ? r.title : (r?.title?.raw || ""));
+
+    if (isSenior(title) && years < 2) { hit = { kind: "senior", role: r, years }; break; }
+    if (isDirectorPlus(title) && years < 4) { hit = { kind: "director_plus", role: r, years }; break; }
+  }
+
+  if (!hit) {
+    return makeSignal({
+      signal_id: "career_velocity",
+      title: "Career Velocity Anomaly",
+      category: "career_plausibility",
+      severity_tier: "B",
+      confidence: "medium",
+      deduction: 0,
+      hard_trigger: false,
+      status: "not_triggered",
+      evidence: {},
+      explanation: "Career progression appears within typical ranges (MVP heuristic).",
+      suggested_questions: []
+    });
+  }
+
+  const deduction = hit.kind === "director_plus" ? 12 : 10;
+
+  return makeSignal({
+    signal_id: "career_velocity",
+    title: "Career Velocity Anomaly",
+    category: "career_plausibility",
+    severity_tier: "B",
+    confidence: "medium",
+    deduction,
+    hard_trigger: false,
+    status: "triggered",
+    evidence: {
+      years_from_first_role: Number(hit.years.toFixed(2)),
+      first_role: summarizeRole(first),
+      flagged_role: summarizeRole(hit.role),
+      rule: hit.kind === "director_plus" ? "<4y to Director/Head/VP/etc" : "<2y to Senior"
+    },
+    explanation: `Rapid progression detected: "${hit.role?.title?.raw || "role"}" reached ~${hit.years.toFixed(1)} years after first listed role.`,
+    suggested_questions: [
+      "Can you walk through how your scope/responsibilities expanded to match this title?",
+      "Was this a formal title change or an internal leveling?"
+    ]
+  });
+}

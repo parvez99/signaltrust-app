@@ -130,6 +130,13 @@ if (typeof document === "undefined") {
       });
   
       const ingest = await readJson(ingestRes);
+      // ✅ If duplicate and we already have a report, skip running pipeline again
+      if (ingest.duplicate && ingest.latest_report_id) {
+        setBusy(false, "Already evaluated ✅");
+        window.location.href =
+          "/trust/report?id=" + encodeURIComponent(ingest.latest_report_id);
+        return;
+      }
       if (!ingestRes.ok) {
         setBusy(false, "");
         alert(ingest.error || "Ingest failed");

@@ -4,10 +4,15 @@ import {
   PROFILE_SCHEMA_VERSION,
   ENGINE_VERSION,
 } from "../../core/versioning/versions"
-
+import { sha256Hex, normalizeForDocHash } from "../lib/crypto.js"
 import { normalizeResumeTextToProfileV1 } from "./normalize_v1.js"
-import { runSignalsV1, defaultSignalConfigV1 } from "./signals_v1.js"
-import { scoreAndBucketV1 } from "./scoring_v1.js"
+// OLD imports 
+// import { runSignalsV1, defaultSignalConfigV1 } from "./signals_v1.js"
+//import { scoreAndBucketV1 } from "./scoring_v1.js"
+
+// New imports (02-26-26)
+import { runSignalsV1, defaultSignalConfigV1 } from "../../core/domain/signals"
+import { scoreAndBucketV1 } from "../../core/domain/scoring"
 
 export async function runTrustPipeline(args: {
   candidateId: string
@@ -98,6 +103,35 @@ export async function runTrustPipeline(args: {
     sourceFilename: sourceFilename ?? "",
     now,
   })
+    // 3.5️⃣ Enrich deterministic profile with duplicate-upload info (doc_hash)
+  try {
+    const docHash = await sha256Hex(normalizeForDocHash(sourceText))
+
+    const row: any = await env.DB.prepare(
+      `SELECT
+         COUNT(*) as c,
+         MIN(created_at) as first_seen_at,
+         MAX(created_at) as last_seen_at
+       FROM trust_candidate_profiles
+       WHERE created_by_candidate_id = ?1
+         AND doc_hash = ?2`
+    ).bind(candidateId, docHash).first()
+
+    const total = Number(row?.c || 0)
+
+    // If this pipeline run happens after ingest insert, the current upload is included in COUNT(*)
+    const priorCount = Math.max(0, total - 1)
+    const signalCtx = { sourceText, sourceFilename: sourceFilename ?? null } as any;
+
+    signalCtx.__dup_doc = {
+      doc_hash: docHash,
+      prior_count: priorCount,
+      first_seen_at: row?.first_seen_at ?? null,
+      last_seen_at: row?.last_seen_at ?? null,
+    }
+  } catch {
+    // Non-fatal: duplicate-upload signal will just show "no doc hash available"
+  }
 
   const triggeredSignals = runSignalsV1(profileForSignals, config, {
     sourceText,
