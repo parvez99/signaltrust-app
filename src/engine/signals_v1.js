@@ -85,6 +85,8 @@ export function signalTitle(id) {
 
     // ✅ NEW
     career_velocity: "Career Velocity Anomaly",
+    github_public_activity: "GitHub Activity Evidence (Public)",
+    github_public_claim_match: "GitHub Skill Plausibility Match (Public)",
   };
   return map[id] || id;
 }

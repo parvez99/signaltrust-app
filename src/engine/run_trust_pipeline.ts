@@ -14,14 +14,18 @@ import { normalizeResumeTextToProfileV1 } from "./normalize_v1.js"
 import { runSignalsV1, defaultSignalConfigV1 } from "../../core/domain/signals"
 import { scoreAndBucketV1 } from "../../core/domain/scoring"
 
+import { extractGithubUsername } from "../../core/github/extract"
+import { enrichGithubPublic } from "../../core/github/enrich"
+
 export async function runTrustPipeline(args: {
   candidateId: string
   sourceText: string
   sourceFilename?: string | null
+  trustProfileId?: string | null
   now: string
   env: Env
 }) {
-  const { candidateId, sourceText, sourceFilename, now, env } = args
+  const { candidateId, sourceText, sourceFilename, trustProfileId, now, env } = args
 
   const llm = new OpenAIWorkerAdapter({ apiKey: env.OPENAI_API_KEY })
 
@@ -103,6 +107,112 @@ export async function runTrustPipeline(args: {
     sourceFilename: sourceFilename ?? "",
     now,
   })
+    console.log("DEBUG_SOURCE_TEXT_HAS_GITHUB", sourceText.includes("github"));
+    console.log("DEBUG_EXTRACTED_GH", extractGithubUsername(sourceText));
+    console.log("DEBUG_TRUST_PROFILE_ID", trustProfileId);
+    // 3.2️⃣ GitHub public enrichment (best-effort, cached per trust_profile_id)
+    try {
+      const ghUsername = extractGithubUsername(sourceText)
+
+      // Debug (view in `wrangler tail`)
+      console.log("DEBUG_GH_USERNAME", ghUsername)
+      console.log("DEBUG_TRUST_PROFILE_ID", trustProfileId)
+
+      if (ghUsername) {
+        // If we have a trust profile id, cache in DB
+        if (trustProfileId) {
+          const cached: any = await env.DB.prepare(
+            `SELECT github_login, account_created_at, public_repos, followers,
+                    top_languages_json, keyword_hits_json, last_activity_at, activity_score,
+                    fetched_at
+            FROM trust_github_public_enrichment
+            WHERE trust_profile_id = ?1`
+          )
+            .bind(trustProfileId)
+            .first()
+
+          const cacheFreshHours = 24
+          const fetchedAt = cached?.fetched_at ? Date.parse(String(cached.fetched_at)) : NaN
+          const isFresh = Number.isFinite(fetchedAt)
+            ? (Date.now() - fetchedAt) < cacheFreshHours * 60 * 60 * 1000
+            : false
+
+          if (cached && isFresh) {
+            ;(profileForSignals as any).__github_public = {
+              github_login: cached.github_login,
+              account_created_at: cached.account_created_at ?? null,
+              public_repos: cached.public_repos ?? null,
+              followers: cached.followers ?? null,
+              top_languages: safeJson(cached.top_languages_json, []),
+              keyword_hits: safeJson(cached.keyword_hits_json, {}),
+              last_activity_at: cached.last_activity_at ?? null,
+              activity_score: Number(cached.activity_score ?? 0),
+              claimed_keywords: [],
+            }
+            console.log("DEBUG_GH_CACHE_HIT", cached.github_login)
+          } else {
+            console.log("DEBUG_GH_HAS_TOKEN", !!(env as any).GITHUB_PUBLIC_TOKEN);
+            console.log("DEBUG_GH_TOKEN_PREFIX", ((env as any).GITHUB_PUBLIC_TOKEN || "").slice(0, 6));
+            const { enrichment, raw } = await enrichGithubPublic({
+              username: ghUsername,
+              token: (env as any).GITHUB_PUBLIC_TOKEN || null,
+              resumeText: sourceText,
+            })
+
+            ;(profileForSignals as any).__github_public = enrichment
+
+            await env.DB.prepare(
+              `INSERT INTO trust_github_public_enrichment
+                (trust_profile_id, github_login, account_created_at, public_repos, followers,
+                top_languages_json, keyword_hits_json, last_activity_at, activity_score,
+                raw_json, fetched_at, updated_at)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+              ON CONFLICT(trust_profile_id) DO UPDATE SET
+                github_login=excluded.github_login,
+                account_created_at=excluded.account_created_at,
+                public_repos=excluded.public_repos,
+                followers=excluded.followers,
+                top_languages_json=excluded.top_languages_json,
+                keyword_hits_json=excluded.keyword_hits_json,
+                last_activity_at=excluded.last_activity_at,
+                activity_score=excluded.activity_score,
+                raw_json=excluded.raw_json,
+                fetched_at=excluded.fetched_at,
+                updated_at=excluded.updated_at`
+            )
+              .bind(
+                trustProfileId,
+                enrichment.github_login,
+                enrichment.account_created_at,
+                enrichment.public_repos,
+                enrichment.followers,
+                JSON.stringify(enrichment.top_languages || []),
+                JSON.stringify(enrichment.keyword_hits || {}),
+                enrichment.last_activity_at,
+                enrichment.activity_score,
+                JSON.stringify(raw),
+                now,
+                now
+              )
+              .run()
+
+            console.log("DEBUG_GH_CACHE_WRITE", enrichment.github_login)
+          }
+        } else {
+          // No trust_profile_id (resumeText-only run) → enrich but do not cache
+          const { enrichment } = await enrichGithubPublic({
+            username: ghUsername,
+            token: (env as any).GITHUB_PUBLIC_TOKEN || null,
+            resumeText: sourceText,
+          })
+          ;(profileForSignals as any).__github_public = enrichment
+          console.log("DEBUG_GH_NO_CACHE", enrichment.github_login)
+        }
+      }
+    } catch (e) {
+      console.log("DEBUG_GH_ERROR", String((e as any)?.message || e))
+      // best-effort
+    }
     // 3.5️⃣ Enrich deterministic profile with duplicate-upload info (doc_hash)
   try {
     const docHash = await sha256Hex(normalizeForDocHash(sourceText))
@@ -177,5 +287,17 @@ function mapDate(iso: string | null, precision: string) {
         : precision === "month"
         ? "month"
         : "day",
+  }
+}
+
+function safeJson(input: any, fallback: any) {
+  try {
+    if (input == null) return fallback
+    if (typeof input === "object") return input
+    const s = String(input)
+    if (!s.trim()) return fallback
+    return JSON.parse(s)
+  } catch {
+    return fallback
   }
 }

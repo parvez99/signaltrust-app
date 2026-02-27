@@ -225,7 +225,6 @@ export async function renderTrustReportPage(request, env) {
           function signalCard(s) {
             const title = esc(s.title || s.signal_id);
             const expl = esc(s.explanation || "");
-            const ded = Number(s.deduction || 0);
             const questions = Array.isArray(s.suggested_questions) ? s.suggested_questions : [];
             const ev = s.evidence || null;
 
@@ -242,21 +241,25 @@ export async function renderTrustReportPage(request, env) {
                 '</ul></div>'
               : "";
 
-            return (
-              '<div style="padding:12px; border:1px solid var(--border); border-radius:16px; background:rgba(255,255,255,.92); box-shadow:0 8px 20px rgba(11,18,32,.06);">' +
-              '<div class="row" style="justify-content:space-between; gap:10px;">' +
-              '<div style="font-weight:900;">' + title + '</div>' +
-              '<div class="row" style="gap:8px;">' +
-              severityTag(s.severity_tier) +
-              confTag(s.confidence) +
-              (ded ? pill("-" + ded, "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") : "") +
-              '</div>' +
-              '</div>' +
-              '<div style="margin-top:8px; color:rgba(11,18,32,.72); line-height:1.5;">' + expl + '</div>' +
-              qHtml +
-              evHtml +
-              '</div>'
-            );
+              const sev = s?.severity_tier ? s.severity_tier : "?";
+              const ded = Number(s?.deduction || 0);
+              const dedLabel = (ded === 0) ? "" : (ded > 0 ? ("-" + ded) : ("+" + Math.abs(ded)));
+
+              return (
+                '<div style="padding:12px; border:1px solid var(--border); border-radius:16px; background:rgba(255,255,255,.92); box-shadow:0 8px 20px rgba(11,18,32,.06);">' +
+                  '<div class="row" style="justify-content:space-between; gap:10px;">' +
+                    '<div style="font-weight:900;">' + title + '</div>' +
+                    '<div class="row" style="gap:8px;">' +
+                      severityTag(sev) +
+                      confTag(s.confidence) +
+                      (dedLabel ? pill(dedLabel, "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") : "") +
+                    '</div>' +
+                  '</div>' +
+                  '<div style="margin-top:8px; color:rgba(11,18,32,.72); line-height:1.5;">' + expl + '</div>' +
+                  qHtml +
+                  evHtml +
+                '</div>'
+              );
           }
 
           async function copyToClipboard(text) {
@@ -327,9 +330,10 @@ export async function renderTrustReportPage(request, env) {
 
             const top = list.slice(0, 3).map(function (s) {
               const title = (s && (s.title || s.signal_id)) ? (s.title || s.signal_id) : "Signal";
-              const sev = (s && s.severity_tier) ? s.severity_tier : "?";
-              const ded = Number((s && s.deduction) || 0);
-              return "- [Tier " + sev + "] " + title + " (-" + ded + ")";
+              const sev = s?.severity_tier ? s.severity_tier : "?";
+              const ded = Number(s?.deduction || 0);
+              const dd = (ded === 0) ? "0" : (ded > 0 ? ("-" + ded) : ("+" + Math.abs(ded)));
+              return "- [Tier " + sev + "] " + title + " (" + dd + ")";
             }).join(NL) || "- None";
 
             const questions = buildInterviewQuestions(signals);
@@ -1599,6 +1603,7 @@ export async function apiTrustRun(request, env) {
       candidateId: row.created_by_candidate_id,
       sourceText: resumeText,
       sourceFilename: row.source_filename || null,
+      trustProfileId: trustProfileId,
       now,
       env,
     })
@@ -1728,6 +1733,7 @@ export async function apiTrustRun(request, env) {
     candidateId,
     sourceText: resumeText,
     sourceFilename,
+    trustProfileId: null,
     now,
     env,
   })

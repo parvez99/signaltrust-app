@@ -3,6 +3,7 @@
 
 import { summarizeRole } from "../../src/lib/utils.js";
 import { detectSectionRanges, sliceSection } from "../../src/engine/normalize_v1.js";
+import { extractClaimKeywords } from "../github/extract";
 
 export type SignalTier = "A" | "B" | "C";
 export type SignalStatus = "triggered" | "not_triggered";
@@ -41,6 +42,8 @@ export function defaultSignalConfigV1(): SignalConfigV1 {
       duplicate_resume_upload: true,
             // NEW
       career_velocity: true,
+      github_public_activity: true,
+      github_public_claim_match: true,
       //date_precision_confidence: true,
       //skill_timeline_mismatch: true,
     },
@@ -58,6 +61,8 @@ export function runSignalsV1(profile: any, config: SignalConfigV1, ctx: RunSigna
 
     // NEW
   if (config.enabled.career_velocity) out.push(signalCareerVelocity(profile));
+  if (config.enabled.github_public_activity) out.push(signalGithubPublicActivity(profile, ctx));
+  if (config.enabled.github_public_claim_match) out.push(signalGithubPublicClaimMatch(profile, ctx));
 //   if (config.enabled.date_precision_confidence) out.push(signalDatePrecisionConfidence(profile));
 //   if (config.enabled.skill_timeline_mismatch) out.push(signalSkillTimelineMismatch(profile, ctx));
   // ✅ Anti-double-counting: early-career "gap after edu" overlaps with "gap between roles"
@@ -102,6 +107,8 @@ export function signalTitle(id: string): string {
     duplicate_roles: "Duplicate Role Entries",
     duplicate_resume_upload: "Duplicate Resume Upload (Cross-Upload)",
     career_velocity: "Career Velocity Anomaly",
+    github_public_activity: "GitHub Activity Evidence (Public)",
+    github_public_claim_match: "GitHub Skill Plausibility Match (Public)",
   };
   return map[id] || id;
 }
@@ -742,3 +749,129 @@ export function signalCareerVelocity(profile: any) {
       ]
     });
 }
+
+function getGithubPublic(profile: any): any | null {
+    const x = (profile as any)?.__github_public;
+    if (!x || typeof x !== "object") return null;
+    if (!x.github_login) return null;
+    return x;
+  }
+  
+  export function signalGithubPublicActivity(profile: any, ctx: RunSignalsCtx = {}): SignalResult {
+    const gh = getGithubPublic(profile);
+    if (!gh) {
+      return makeSignal({
+        signal_id: "github_public_activity",
+        category: "external_evidence",
+        severity_tier: "C",
+        confidence: "low",
+        deduction: 0,
+        hard_trigger: false,
+        status: "not_triggered",
+        evidence: {},
+        explanation: "No GitHub username detected/enriched from the resume (public enrichment).",
+        suggested_questions: [],
+      });
+    }
+  
+    const score = Number(gh.activity_score ?? 0);
+  
+    let bonus = -2;
+    let conf: any = "low";
+    if (score >= 70) { bonus = -8; conf = "medium"; }
+    else if (score >= 50) { bonus = -4; conf = "medium"; }
+  
+    return makeSignal({
+      signal_id: "github_public_activity",
+      category: "external_evidence",
+      severity_tier: "C",
+      confidence: conf,
+      deduction: bonus,
+      hard_trigger: false,
+      status: "triggered",
+      evidence: {
+        github_login: gh.github_login,
+        activity_score: score,
+        last_activity_at: gh.last_activity_at ?? null,
+        public_repos: gh.public_repos ?? null,
+        followers: gh.followers ?? null,
+        top_languages: Array.isArray(gh.top_languages) ? gh.top_languages : [],
+        note: "Public GitHub signals are not ownership-verified unless candidate connects GitHub via OAuth.",
+      },
+      explanation: "Public GitHub activity suggests the candidate is actively building/shipping code. (Not ownership-verified.)",
+      suggested_questions: [
+        "Is this GitHub account yours? If yes, can you walk through 1–2 recent repos or PRs you’re proud of?",
+      ],
+    });
+  }
+  
+  export function signalGithubPublicClaimMatch(profile: any, ctx: RunSignalsCtx = {}): SignalResult {
+    const gh = getGithubPublic(profile);
+    if (!gh) {
+      return makeSignal({
+        signal_id: "github_public_claim_match",
+        category: "external_evidence",
+        severity_tier: "C",
+        confidence: "low",
+        deduction: 0,
+        hard_trigger: false,
+        status: "not_triggered",
+        evidence: {},
+        explanation: "No public GitHub enrichment available to match against resume claims.",
+        suggested_questions: [],
+      });
+    }
+  
+    const claims = extractClaimKeywords(String(ctx.sourceText || ""));
+    const hits: Record<string, number> = (gh.keyword_hits && typeof gh.keyword_hits === "object") ? gh.keyword_hits : {};
+  
+    const matched = claims
+      .map((k) => ({ keyword: k, hits: Number(hits[k] || 0) }))
+      .filter((x) => x.hits > 0);
+  
+    if (!matched.length) {
+      return makeSignal({
+        signal_id: "github_public_claim_match",
+        category: "external_evidence",
+        severity_tier: "C",
+        confidence: "low",
+        deduction: 0,
+        hard_trigger: false,
+        status: "not_triggered",
+        evidence: {
+          github_login: gh.github_login,
+          claimed_keywords: claims,
+        },
+        explanation:
+          "We detected a GitHub profile, but didn’t find obvious keyword overlap between resume claims and public repo metadata. This isn’t a negative signal by itself.",
+        suggested_questions: [
+          "Which GitHub repo best demonstrates your Kubernetes/AWS/infra experience?",
+        ],
+      });
+    }
+  
+    const matchCount = matched.length;
+    let bonus = -3;
+    let conf: any = "low";
+    if (matchCount >= 3) { bonus = -6; conf = "medium"; }
+  
+    return makeSignal({
+      signal_id: "github_public_claim_match",
+      category: "external_evidence",
+      severity_tier: "C",
+      confidence: conf,
+      deduction: bonus,
+      hard_trigger: false,
+      status: "triggered",
+      evidence: {
+        github_login: gh.github_login,
+        matched_keywords: matched,
+        note: "Keyword overlap is a weak plausibility heuristic, not proof of skill or ownership.",
+      },
+      explanation: "Public repo metadata contains keywords that overlap with resume claims (plausibility boost, not proof).",
+      suggested_questions: [
+        "Can you describe the architecture of one repo that matches your Kubernetes/AWS claims?",
+        "Did you personally implement the infra pieces (Terraform/Helm/CI), or contribute to a subset?",
+      ],
+    });
+  }
