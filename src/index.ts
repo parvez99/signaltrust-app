@@ -37,6 +37,8 @@ import {
   apiTrustDebugProfile,
   apiTrustEvaluation,
   apiTrustEvaluationNormalized,
+  apiTrustUpload,
+  apiTrustPdf
 } from "./routes/trust.js";
 
 
@@ -216,6 +218,8 @@ export default {
     if (path === "/api/trust/ingest" && request.method === "POST") return apiTrustIngest(request, env);
     if (path === "/api/trust/run" && request.method === "POST") return apiTrustRun(request, env);
     if (path === "/api/trust/report" && request.method === "GET") return apiTrustReport(request, env);
+    if (path === "/api/trust/upload" && request.method === "POST") return apiTrustUpload(request, env);
+    if (path === "/api/trust/pdf" && request.method === "GET") return apiTrustPdf(request, env);
 
     if (path === "/api/trust/debug-profile" && request.method === "GET") return apiTrustDebugProfile(request, env);
 

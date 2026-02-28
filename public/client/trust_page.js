@@ -123,12 +123,40 @@ if (typeof document === "undefined") {
       }
   
       setBusy(true, "Ingesting…");
+      // 1) Upload PDF to R2 (new)
+      let file_key = null;
+
+      if (file) { // file should be the File object from <input type="file" ...>
+        const fd = new FormData();
+        fd.append("file", file);
+
+        const uploadRes = await fetch("/api/trust/upload", {
+          method: "POST",
+          body: fd
+        });
+
+        const uploadData = await uploadRes.json().catch(() => ({}));
+
+        if (!uploadRes.ok || !uploadData.file_key) {
+          throw new Error(uploadData?.error || "PDF upload failed");
+        }
+
+        file_key = uploadData.file_key;
+      }
+
+      // 2) Ingest extracted text like before, but include file_key
       const ingestRes = await fetch("/api/trust/ingest", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text, filename, source, extractor })
+        body: JSON.stringify({
+          text,
+          filename,
+          file_key,                 // ✅ NEW
+          source: file ? "pdf" : "paste",
+          extractor: file ? "browser_pdfjs" : "manual"
+        })
       });
-  
+        
       const ingest = await readJson(ingestRes);
       // ✅ If duplicate and we already have a report, skip running pipeline again
       if (ingest.duplicate && ingest.latest_report_id) {

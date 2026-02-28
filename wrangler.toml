@@ -14,3 +14,7 @@ database_id = "46107211-1fbe-49ab-b371-b8aab5be7deb"
 ADMIN_TOKEN = "58b869980c5150ba580abcf64209f0e20e3eb56b91137ad0"
 ADMIN_EMAILS = "always.learner99@gmail.com"
 RECRUITER_EMAILS="threeflagsfamily@gmail.com,mulani.marina@gmail.com,irfanmulani1@gmail.com"
+
+[[r2_buckets]]
+binding = "RESUME_BUCKET"
+bucket_name = "signaltrust-resumes"

@@ -1,0 +1,2 @@
+ALTER TABLE trust_candidate_profiles
+ADD COLUMN source_file_key TEXT;
