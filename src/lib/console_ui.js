@@ -303,7 +303,7 @@ export function consoleShell({
               <div class="divider"></div>
 
               <nav class="nav" aria-label="Console navigation">
-                ${navItem("home", "Trust Home", "/trust", "⌂")}
+                ${navItem("upload", "Upload", "/trust", "⌂")}
                 ${navItem("profiles", "Profiles", "/trust/profiles", "⧉")}
                 ${navItem("signals", "Signals", "/trust/signals", "⟡")}
                 ${navItem("api", "API Keys", "/trust/api", "⚿")}

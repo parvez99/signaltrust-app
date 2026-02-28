@@ -23,61 +23,57 @@ export async function renderTrustHome(request, env) {
   
     const who = escapeHtml(sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter");
   
-    const html = pageShell({
-      title: "SignalTrust — Trust Engine (MVP)",
-      rightPill: `Trust Engine • ${who}`,
+    const html = consoleShell({
+      title: "Trust Engine",
+      who,
+      active: "upload",   // 👈 add this (explained below)
       body: `
-        <div class="row" style="margin-top:14px;">
-          <a class="btn btn-ghost" href="/">← Home</a>
-          <a class="btn" href="/trust/profiles">Profiles</a>
-          <span class="spacer"></span>
-          <a class="btn" href="/r/search">Recruiter Search</a>
-          <button class="btn btn-ghost" id="logout" type="button">Logout</button>
-        </div>
-  
-        <div class="card" style="margin-top:14px;">
+        <div class="card">
           <h2 style="margin:0 0 6px;">Trust Report (MVP)</h2>
-          <div class="fine">Paste resume text (for now). We’ll normalize → run signals → score → report.</div>
-  
+          <div class="fine">Upload a PDF or paste resume text. We’ll normalize → run signals → score → report.</div>
+    
           <div class="divider"></div>
           <label class="label">Upload PDF (optional)</label>
           <input id="pdf" type="file" accept="application/pdf" />
-
+    
           <div class="fine" style="margin-top:8px;">
             If you upload a PDF, we’ll extract text in the browser and send text to the server.
           </div>
+    
           <label class="label">Resume text</label>
-          <textarea id="resumeText" rows="16" placeholder="Paste resume text here…" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;"></textarea>
-  
+          <textarea id="resumeText" rows="16"
+            placeholder="Paste resume text here…"
+            style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;"></textarea>
+    
           <div class="divider"></div>
-
+    
           <div class="row" style="align-items:center; gap:10px;">
             <label class="fine" style="display:flex; align-items:center; gap:8px;">
-            <input id="showExtracted" type="checkbox" />
-                Preview extracted PDF text
+              <input id="showExtracted" type="checkbox" />
+              Preview extracted PDF text
             </label>
             <span class="fine" id="extractMeta"></span>
-         </div>
-
-         <pre id="extractPreview"
+          </div>
+    
+          <pre id="extractPreview"
             style="display:none; white-space:pre-wrap; background:rgba(11,18,32,.04);
             border:1px solid var(--border); border-radius:14px; padding:10px;
-            overflow:auto; max-height:260px;">
-         </pre>
-            <div class="row" style="margin-top:12px;">
+            overflow:auto; max-height:260px;"></pre>
+    
+          <div class="row" style="margin-top:12px;">
             <button class="btn btn-ghost" id="previewBtn" type="button">Preview extracted text</button>
             <button class="btn btn-primary" id="run" type="button">Generate Trust Report</button>
             <span class="fine" id="status"></span>
           </div>
-  
+    
           <div class="divider"></div>
           <div class="fine">
             Tip: MVP signals running: <b>Overlapping roles</b>, <b>Unexplained gap &gt; 6 months</b>.
           </div>
         </div>
-  
-    <script src="/client/pdf_extract.js"></script>
-    <script type="module" src="/client/trust_page.js"></script>
+    
+        <script src="/client/pdf_extract.js"></script>
+        <script type="module" src="/client/trust_page.js"></script>
       `
     });
   
