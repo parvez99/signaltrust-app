@@ -161,10 +161,19 @@ app.post("/v1/evaluate", async (req: Request, res: Response) => {
       engineVersion: out.engineVersion,
       extractionSource: out.extractionSource,
       extractionError: out.extractionError,
+    
       llm: out.llm,
       scoring: out.scoring,
       triggeredSignals: out.triggeredSignals,
-      profile: out.profile,
+    
+      // ✅ Backward compatible "profile"
+      // Prefer deterministic (stable) shape; fallback to LLM normalized; then legacy.
+      profile: out.deterministicProfile ?? out.llmNormalizedProfile ?? out.llmLegacyProfile ?? null,
+    
+      // ✅ Optional: expose both explicitly (nice for debugging / future clients)
+      deterministicProfile: out.deterministicProfile ?? null,
+      llmNormalizedProfile: out.llmNormalizedProfile ?? null,
+      llmLegacyProfile: out.llmLegacyProfile ?? null,
     });
   } catch (e: any) {
     console.error(

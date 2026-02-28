@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: llm-gateway
-          image: 832850273244.dkr.ecr.us-east-1.amazonaws.com/llm-gateway:0.9
+          image: 832850273244.dkr.ecr.us-east-1.amazonaws.com/llm-gateway:0.10
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
