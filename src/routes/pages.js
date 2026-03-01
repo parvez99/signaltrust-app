@@ -612,3 +612,20 @@ export async function renderCandidatePublic(request, env) {
       headers: { "content-type": "text/html; charset=UTF-8", "cache-control": "no-store" },
     });
 }
+
+export async function renderComingSoon(_request, _env) {
+  return `
+    <div style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;">
+      <div style="max-width:720px; width:100%; border:1px solid rgba(11,18,32,.10); border-radius:18px; background:rgba(255,255,255,.92); box-shadow:0 14px 40px rgba(11,18,32,.08); padding:22px;">
+        <div style="font-weight:900; font-size:20px;">SignalTrust</div>
+        <div style="margin-top:6px; color:rgba(11,18,32,.65); line-height:1.5;">
+          Coming soon. We’re building AI-powered hiring risk intelligence for recruiters.
+        </div>
+
+        <div style="margin-top:14px; color:rgba(11,18,32,.55); font-size:12px;">
+          Private beta in progress.
+        </div>
+      </div>
+    </div>
+  `;
+}

@@ -41,7 +41,9 @@ import {
   apiTrustPdf
 } from "./routes/trust.js";
 
-
+import { isRecruiter, isAdmin } from "./lib/session.js";
+import { requireSession } from "./lib/session.js";
+import { redirect } from "./lib/http.js";
 import { apiDashboard, apiMe } from "./routes/app.js";
 import { 
   renderProfilePage,
@@ -54,7 +56,8 @@ import {
   renderLanding,
   renderWaitlistPage,
   renderCandidatePublic,
-  renderThanksPage
+  renderThanksPage,
+  renderComingSoon
 } from "./routes/pages.js"
 
 import { logout, githubStart, githubCallback } from "./routes/auth_github.js"
@@ -75,13 +78,11 @@ import {
   handleWaitlist, handleWaitlistCount
 } from "./routes/waitlist.js"
 
-
 // All the routes under fetch() 
 export default {
   //Function to handle the incoming requests; Routing
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-
     // API
     const path = url.pathname.replace(/\/+$/, ""); // remove trailing slash
     
@@ -214,12 +215,12 @@ export default {
     if (path === "/trust/profiles" && request.method === "GET") return renderTrustProfilesPage(request, env);
     if (path === "/trust/profile" && request.method === "GET") return renderTrustProfilePage(request, env);
     if (path === "/trust/signals" && request.method === "GET") return renderTrustSignalsPage(request, env);
-    if (path === "/trust/api" && request.method === "GET") return apiTrustProfile(request, env);
     if (path === "/api/trust/ingest" && request.method === "POST") return apiTrustIngest(request, env);
     if (path === "/api/trust/run" && request.method === "POST") return apiTrustRun(request, env);
     if (path === "/api/trust/report" && request.method === "GET") return apiTrustReport(request, env);
     if (path === "/api/trust/upload" && request.method === "POST") return apiTrustUpload(request, env);
     if (path === "/api/trust/pdf" && request.method === "GET") return apiTrustPdf(request, env);
+    if (path === "/go" && request.method === "GET") return routeAfterLogin(request, env);
 
     if (path === "/api/trust/debug-profile" && request.method === "GET") return apiTrustDebugProfile(request, env);
 
@@ -245,7 +246,38 @@ export default {
       })
     }
     
-    // Default to landing page
+    // --- Public homepage behavior (Option 2: Hidden login) ---
+    if (path === "" || path === "/") {
+      const maintenance = String(env.MAINTENANCE_MODE || "").toLowerCase() === "true";
+
+      if (maintenance) {
+        // If logged in, send them into the product
+        const sess = await requireSession(request, env);
+        if (sess) {
+          return routeAfterLogin(request, env); // redirects to /trust or /app
+        }
+
+        // Public visitors see Coming Soon (no login buttons)
+        const html = await renderComingSoon(request, env);
+        return new Response(html, {
+          headers: {
+            "content-type": "text/html; charset=UTF-8",
+            "cache-control": "no-store",
+            "x-robots-tag": "noindex, nofollow",
+          },
+        });
+      }
+
+      // Not in maintenance -> show real landing page (with login, waitlist, etc.)
+      return new Response(await renderLanding(request, env), {
+        headers: {
+          "content-type": "text/html; charset=UTF-8",
+          "cache-control": "no-store",
+        },
+      });
+    }
+
+    // Default: show landing for unknown routes
     return new Response(await renderLanding(request, env), {
       headers: {
         "content-type": "text/html; charset=UTF-8",
@@ -254,3 +286,11 @@ export default {
     });
   },
 };
+
+async function routeAfterLogin(request: Request, env: Env) {
+  const sess = await requireSession(request, env);
+  if (!sess) return redirect("/");
+
+  const recruiter = isRecruiter(sess, env) || isAdmin(sess, env);
+  return redirect(recruiter ? "/trust" : "/app");
+}

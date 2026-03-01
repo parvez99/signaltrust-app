@@ -112,7 +112,7 @@ export async function googleCallback(request, env) {
     });
   
     const headers = new Headers();
-    headers.set("Location", "/app");
+    headers.set("Location", "/go");
     headers.append("Set-Cookie", sessionCookie);
     headers.append("Set-Cookie", clearState);
   
