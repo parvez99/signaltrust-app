@@ -172,7 +172,7 @@ export function baseStyles() {
     color: rgba(2,6,23,.88);
   }
     `;
-  }
+}
 
 export function pageShell({ title, body, rightPill = "MVP • Early access", fullWidth = false }) {
     const wrapClass = fullWidth ? "wrap wrap-full" : "wrap";
@@ -199,4 +199,3 @@ export function pageShell({ title, body, rightPill = "MVP • Early access", ful
   </body>
   </html>`;
 }
-  

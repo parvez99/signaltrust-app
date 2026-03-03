@@ -215,10 +215,159 @@ export async function renderTrustReportPage(request, env) {
     
           <div class="divider"></div>
     
-          <div style="display:grid; grid-template-columns: 1fr; gap:10px;" id="signals">
-            <div class="fine">Loading signals…</div>
+          <style>
+            .rt-tabs{ display:flex; gap:8px; margin-top:12px; }
+            .rt-tab{
+              border: 1px solid var(--border);
+              background: rgba(11,18,32,.03);
+              color: rgba(11,18,32,.78);
+              padding: 8px 12px;
+              border-radius: 999px;
+              font-weight: 900;
+              cursor: pointer;
+            }
+            .rt-tab.active{
+              background: rgba(0,170,170,.14);
+              border-color: rgba(0,170,170,.35);
+              color: rgba(0,120,120,1);
+            }
+            .rt-panel{ margin-top: 12px; }
+            .rt-panel[hidden]{ display:none; }
+
+            .riskbar{
+              height: 8px;
+              border-radius: 999px;
+              background: rgba(11,18,32,.06);
+              overflow:hidden;
+              border: 1px solid rgba(11,18,32,.06);
+            }
+            .riskbar > div{
+              height: 100%;
+              width: 0%;
+              background: rgba(180,35,24,.55); /* will override in JS */
+            }
+
+            /* Modal */
+            .modal-backdrop{
+              position: fixed;
+              inset: 0;
+              background: rgba(11,18,32,.45);
+              display:none;
+              align-items:center;
+              justify-content:center;
+              z-index: 9999;
+              padding: 18px;
+            }
+            .modal-backdrop.open{ display:flex; }
+            .modal-card{
+              width: min(980px, 96vw);
+              max-height: 86vh;
+              overflow:auto;
+              border-radius: 18px;
+              background: rgba(255,255,255,.96);
+              border: 1px solid rgba(11,18,32,.12);
+              box-shadow: 0 18px 55px rgba(11,18,32,.22);
+              backdrop-filter: blur(8px);
+            }
+            .modal-head{
+              position: sticky;
+              top: 0;
+              background: rgba(246,251,251,.85);
+              backdrop-filter: blur(8px);
+              border-bottom: 1px solid rgba(11,18,32,.10);
+              padding: 12px 14px;
+              display:flex;
+              align-items:center;
+              gap: 10px;
+              z-index: 2;
+            }
+            .modal-title{ font-weight: 1000; letter-spacing:.2px; }
+            .modal-body{ padding: 14px; }
+            .codebox{
+              white-space: pre-wrap;
+              background: rgba(11,18,32,.04);
+              border: 1px solid var(--border);
+              border-radius: 14px;
+              padding: 12px;
+              overflow:auto;
+            }
+          </style>
+
+          <div class="rt-tabs" role="tablist" aria-label="Report tabs">
+            <button class="rt-tab active" id="tabAnalysis" type="button" role="tab" aria-selected="true">Analysis</button>
+            <button class="rt-tab" id="tabDetails" type="button" role="tab" aria-selected="false">Details</button>
           </div>
-        </div>
+
+          <div class="rt-panel" id="panelAnalysis" role="tabpanel">
+            <div class="divider"></div>
+
+            <div class="fine" style="margin-bottom:8px;">Insights</div>
+            <div style="display:grid; grid-template-columns:1fr; gap:10px;" id="insights">
+              <div class="fine">Loading insights…</div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="row" style="gap:10px; align-items:center;">
+              <button class="btn btn-ghost" id="btnFullAnalysis" type="button" disabled>View Full Analysis</button>
+              <span class="fine" id="fullAnalysisHint"></span>
+              <span class="spacer"></span>
+              <span class="fine" id="checkedCount"></span>
+            </div>
+          </div>
+
+          <div class="rt-panel" id="panelDetails" role="tabpanel" hidden>
+            <div class="divider"></div>
+            <div class="fine">Details</div>
+
+            <div style="display:grid; grid-template-columns:1fr; gap:10px; margin-top:10px;">
+              <div class="card">
+                <div class="fine">Engine</div>
+                <div style="font-weight:900; margin-top:6px;" id="dEngine">—</div>
+                <div class="fine" style="margin-top:6px;" id="dExtraction">—</div>
+              </div>
+
+              <details class="card">
+                <summary class="fine">Show raw report JSON</summary>
+                <pre class="codebox" id="dReportJson" style="margin-top:10px;"></pre>
+              </details>
+
+              <details class="card">
+                <summary class="fine">Show raw insights JSON</summary>
+                <pre class="codebox" id="dSignalsJson" style="margin-top:10px;"></pre>
+              </details>
+            </div>
+          </div>
+
+          <!-- Full Analysis Modal -->
+          <div class="modal-backdrop" id="analysisModal" aria-hidden="true">
+            <div class="modal-card">
+              <div class="modal-head">
+                <div class="modal-title">Full Analysis</div>
+                <span class="spacer"></span>
+                <button class="btn btn-ghost" id="btnCloseModal" type="button">Close</button>
+              </div>
+              <div class="modal-body">
+                <div class="fine">Report</div>
+                <pre class="codebox" id="mReport" style="margin-top:8px;"></pre>
+
+                <div class="divider"></div>
+
+                <div class="fine">Insights</div>
+                <pre class="codebox" id="mSignals" style="margin-top:8px;"></pre>
+
+                <div class="divider"></div>
+
+                <div class="fine">Evaluation (LLM meta)</div>
+                <pre class="codebox" id="mEval" style="margin-top:8px;">(loading…)</pre>
+
+                <div class="divider"></div>
+
+                <div class="fine">Normalized profile snapshot</div>
+                <pre class="codebox" id="mNorm" style="margin-top:8px;">(loading…)</pre>
+              </div>
+            </div>
+          </div>
     
         <script>
           const reportId = ${JSON.stringify(id)};
@@ -398,7 +547,7 @@ export async function renderTrustReportPage(request, env) {
             const btnCopyQuestions = document.getElementById("btnCopyQuestions");
     
             document.getElementById("headline").textContent = "Loading...";
-            document.getElementById("signals").innerHTML = '<div class="fine">Loading...</div>';
+            document.getElementById("insights").innerHTML = '<div class="fine">Loading...</div>';
     
             const res = await fetch("/api/trust/report?id=" + encodeURIComponent(reportId));
             const data = await readJson(res);
@@ -406,7 +555,7 @@ export async function renderTrustReportPage(request, env) {
             if (!res.ok) {
               document.getElementById("headline").textContent = "Failed to load";
               document.getElementById("meta").textContent = data.error || "Error";
-              document.getElementById("signals").innerHTML = "";
+              document.getElementById("insights").innerHTML = "";
               return;
             }
     
@@ -415,7 +564,66 @@ export async function renderTrustReportPage(request, env) {
     
             __lastReport = report;
             __lastSignals = signals;
-    
+
+            // Details tab
+            document.getElementById("dEngine").textContent = String(report.engine_version || "—");
+            const dExtraction = document.getElementById("dExtraction");
+            if (dExtraction) {
+              dExtraction.textContent = "Created: " + (report.created_at || "—") +
+                " • Bucket: " + (report.bucket || "—") +
+                " • Hard: " + (report.hard_triggered ? "Yes" : "No");
+            }
+            document.getElementById("dReportJson").textContent = JSON.stringify(report, null, 2);
+            document.getElementById("dSignalsJson").textContent = JSON.stringify(signals, null, 2);
+
+            // Hook up Full Analysis button
+            const btnFull = document.getElementById("btnFullAnalysis");
+            if (btnFull) {
+              btnFull.disabled = false;
+              btnFull.onclick = async function () {
+                // Fill modal basics
+                document.getElementById("mReport").textContent = JSON.stringify(report, null, 2);
+                document.getElementById("mSignals").textContent = JSON.stringify(signals, null, 2);
+
+                // Load evaluation meta (optional)
+                const evalId = report.trust_evaluation_id;
+                const mEval = document.getElementById("mEval");
+                const mNorm = document.getElementById("mNorm");
+
+                if (!evalId) {
+                  if (mEval) mEval.textContent = "(no evaluation attached)";
+                  if (mNorm) mNorm.textContent = "(no evaluation attached)";
+                  openModal();
+                  return;
+                }
+
+                try {
+                  if (mEval) mEval.textContent = "(loading…)";
+                  if (mNorm) mNorm.textContent = "(loading…)";
+
+                  const r1 = await fetch("/api/trust/evaluation?id=" + encodeURIComponent(evalId));
+                  const j1 = await readJson(r1);
+                  if (r1.ok) {
+                    if (mEval) mEval.textContent = JSON.stringify(j1.evaluation, null, 2);
+                  } else {
+                    if (mEval) mEval.textContent = "Failed to load evaluation: " + (j1.error || "error");
+                  }
+
+                  const r2 = await fetch("/api/trust/evaluation/normalized?id=" + encodeURIComponent(evalId));
+                  const j2 = await readJson(r2);
+                  if (r2.ok) {
+                    if (mNorm) mNorm.textContent = JSON.stringify(j2, null, 2);
+                  } else {
+                    if (mNorm) mNorm.textContent = "Failed to load normalized profile: " + (j2.error || "error");
+                  }
+                } catch (e) {
+                  if (mEval) mEval.textContent = "Error: " + String(e?.message || e);
+                  if (mNorm) mNorm.textContent = "Error: " + String(e?.message || e);
+                }
+
+                openModal();
+              };
+            }            
             const score = Number(report.trust_score || 0);
             const bucket = String(report.bucket || "unknown");
             const hard = report.hard_triggered ? "Yes" : "No";
@@ -425,7 +633,10 @@ export async function renderTrustReportPage(request, env) {
     
             document.getElementById("meta").textContent =
               "Hard-triggered: " + hard + " | Engine: " + (report.engine_version || "") + " | Created: " + (report.created_at || "");
-    
+            const em = document.getElementById("evalMeta");
+            if (em) {
+              em.textContent = report.trust_evaluation_id ? ("Evaluation: " + report.trust_evaluation_id) : "Evaluation: —";
+            }
             const sum = report.summary || {};
             document.getElementById("summary").innerHTML = [
               pill("Tier A: " + (sum.tier_a_count ?? 0), "rgba(180,35,24,.08)", "rgba(180,35,24,.22)", "#b42318"),
@@ -433,8 +644,18 @@ export async function renderTrustReportPage(request, env) {
               pill("Tier C: " + (sum.tier_c_count ?? 0), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)")
             ].join("");
     
-            document.getElementById("signals").innerHTML =
-              signals.length ? signals.map(signalCard).join("") : '<div class="fine">No signals triggered.</div>';
+            document.getElementById("insights").innerHTML =
+              signals.length ? signals.map(signalCard).join("") : '<div class="fine">No insights triggered.</div>';
+
+            const checked = document.getElementById("checkedCount");
+            if (checked) checked.textContent = signals.length ? (signals.length + " flagged") : "0 flagged";
+            // Full analysis hint (shows if evaluation exists)
+            const hint = document.getElementById("fullAnalysisHint");
+            if (hint) {
+              hint.textContent = report.trust_evaluation_id
+                ? "Includes evaluation + normalized snapshot"
+                : "No evaluation attached";
+            }
     
             const questionsText = buildInterviewQuestions(__lastSignals);
     
@@ -464,13 +685,53 @@ export async function renderTrustReportPage(request, env) {
               };
             }
           }
-    
+          document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") closeModal();
+          });
           document.getElementById("refresh").addEventListener("click", load);
           document.getElementById("logout").addEventListener("click", async function () {
             await fetch("/auth/logout", { method: "POST" });
             window.location.replace("/");
           });
-    
+          function setTab(which) {
+          const a = document.getElementById("tabAnalysis");
+          const d = document.getElementById("tabDetails");
+          const pa = document.getElementById("panelAnalysis");
+          const pd = document.getElementById("panelDetails");
+
+          const isAnalysis = which === "analysis";
+          a.classList.toggle("active", isAnalysis);
+          d.classList.toggle("active", !isAnalysis);
+
+          a.setAttribute("aria-selected", isAnalysis ? "true" : "false");
+          d.setAttribute("aria-selected", !isAnalysis ? "true" : "false");
+
+          pa.hidden = !isAnalysis;
+          pd.hidden = isAnalysis;
+        }
+
+        document.getElementById("tabAnalysis")?.addEventListener("click", () => setTab("analysis"));
+        document.getElementById("tabDetails")?.addEventListener("click", () => setTab("details"));
+
+        function openModal() {
+          const m = document.getElementById("analysisModal");
+          if (!m) return;
+          m.classList.add("open");
+          m.setAttribute("aria-hidden", "false");
+          document.body.style.overflow = "hidden";
+        }
+
+        function closeModal() {
+          const m = document.getElementById("analysisModal");
+          if (!m) return;
+          m.classList.remove("open");
+          m.setAttribute("aria-hidden", "true");
+          document.body.style.overflow = "";
+        }
+        document.getElementById("btnCloseModal")?.addEventListener("click", closeModal);
+        document.getElementById("analysisModal")?.addEventListener("click", (e) => {
+          if (e.target && e.target.id === "analysisModal") closeModal();
+        });
           load();
         </script>
       `
@@ -497,6 +758,21 @@ export async function renderTrustProfilePage(request, env) {
       title: "SignalTrust — Trust Profile",
       rightPill: `Trust Engine • ${who}`,
       body: `
+        <style>
+          .riskbar{
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(11,18,32,.06);
+            overflow:hidden;
+            border: 1px solid rgba(11,18,32,.06);
+          }
+          .riskbar > div{
+            height: 100%;
+            width: 0%;
+            background: rgba(180,35,24,.55);
+            transition: width 220ms ease;
+          }
+        </style>
         <div class="row" style="margin-top:14px;">
           <a class="btn btn-ghost" href="/trust/profiles">← Profiles</a>
           <span class="spacer"></span>
@@ -508,6 +784,9 @@ export async function renderTrustProfilePage(request, env) {
           <div class="fine">Trust profile</div>
           <h2 style="margin:6px 0 0;" id="headline">Loading…</h2>
           <div class="fine" id="meta"></div>
+          <div style="margin-top:10px;">
+            <div class="riskbar"><div id="riskFill"></div></div>
+          </div>
           <div class="divider"></div>
   
           <div id="reports" class="fine">Loading reports…</div>
@@ -515,7 +794,7 @@ export async function renderTrustProfilePage(request, env) {
   
         <script>
           const trustProfileId = ${JSON.stringify(id)};
-  
+
           function esc(s) {
             return String(s || "")
               .replaceAll("&", "&amp;")
@@ -524,11 +803,11 @@ export async function renderTrustProfilePage(request, env) {
               .replaceAll('"', "&quot;")
               .replaceAll("'", "&#039;");
           }
-  
+
           function pill(text, bg, bd, ink) {
-            return '<span class="pill" style="background:'+bg+'; border-color:'+bd+'; color:'+ink+';">' + text + '</span>';
+            return '<span class="pill" style="background:' + bg + '; border-color:' + bd + '; color:' + ink + ';">' + text + "</span>";
           }
-  
+
           function bucketBadge(bucket) {
             const b = String(bucket || "unknown");
             if (b === "green") return pill("Green", "rgba(12,122,75,.10)", "rgba(12,122,75,.25)", "#0c7a4b");
@@ -536,59 +815,74 @@ export async function renderTrustProfilePage(request, env) {
             if (b === "red") return pill("Red", "rgba(180,35,24,.10)", "rgba(180,35,24,.25)", "#b42318");
             return pill(b, "rgba(11,18,32,.06)", "var(--border)", "var(--muted)");
           }
-  
+
           async function readJson(res) {
             const ct = res.headers.get("content-type") || "";
             if (ct.includes("application/json")) return await res.json();
             return { error: await res.text() };
           }
-  
+
           function reportRow(r) {
             return (
               '<div style="padding:12px; border:1px solid var(--border); border-radius:16px; background:rgba(255,255,255,.92); box-shadow:0 8px 20px rgba(11,18,32,.06);">' +
                 '<div class="row" style="justify-content:space-between; gap:10px; align-items:flex-start;">' +
-                  '<div>' +
+                  "<div>" +
                     '<div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">' +
                       bucketBadge(r.bucket) +
-                      pill('Score: ' + (r.trust_score ?? 0), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
-                      pill('Hard: ' + (r.hard_triggered ? "Yes" : "No"), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
-                    '</div>' +
-                    '<div class="fine" style="margin-top:6px;">Created: ' + esc(r.created_at) + ' • Engine: ' + esc(r.engine_version) + '</div>' +
-                  '</div>' +
+                      pill("Score: " + (r.trust_score ?? 0), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
+                      pill("Hard: " + (r.hard_triggered ? "Yes" : "No"), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
+                    "</div>" +
+                    '<div class="fine" style="margin-top:6px;">Created: ' + esc(r.created_at) + " • Engine: " + esc(r.engine_version) + "</div>" +
+                  "</div>" +
                   '<div class="row" style="gap:8px;">' +
                     '<a class="btn" href="/trust/report?id=' + encodeURIComponent(r.id) + '">Open</a>' +
-                  '</div>' +
-                '</div>' +
-              '</div>'
+                  "</div>" +
+                "</div>" +
+              "</div>"
             );
           }
-  
+
           async function load() {
             document.getElementById("headline").textContent = "Loading…";
             document.getElementById("reports").textContent = "Loading…";
-  
+
             const res = await fetch("/api/trust/profile?id=" + encodeURIComponent(trustProfileId));
             const data = await readJson(res);
-  
+
             if (!res.ok) {
               document.getElementById("headline").textContent = "Failed to load";
               document.getElementById("meta").textContent = data.error || "Error";
               document.getElementById("reports").textContent = "";
               return;
             }
-  
+
             const p = data.profile;
             document.getElementById("headline").textContent = p.source_filename || p.id;
             document.getElementById("meta").textContent =
               "Created: " + (p.created_at || "") + " • Source: " + (p.source_type || "") + " • Extractor: " + (p.extractor || "");
-  
+
             const reports = data.reports || [];
+
+            // ✅ Update risk bar from latest report (if any)
+            const latest = reports[0] || null;
+            const rf = document.getElementById("riskFill");
+            if (rf && latest) {
+              const pct = Math.max(0, Math.min(100, Number(latest.trust_score || 0)));
+              rf.style.width = pct + "%";
+              rf.style.background =
+                latest.bucket === "green" ? "rgba(12,122,75,.55)" :
+                latest.bucket === "yellow" ? "rgba(245,158,11,.55)" :
+                "rgba(180,35,24,.55)";
+            } else if (rf) {
+              rf.style.width = "0%";
+            }
+
             document.getElementById("reports").innerHTML =
               reports.length
-                ? '<div style="display:grid; grid-template-columns:1fr; gap:10px;">' + reports.map(reportRow).join("") + '</div>'
+                ? '<div style="display:grid; grid-template-columns:1fr; gap:10px;">' + reports.map(reportRow).join("") + "</div>"
                 : '<div class="fine">No reports yet. Click “Run report”.</div>';
           }
-  
+
           document.getElementById("run").addEventListener("click", async () => {
             const btn = document.getElementById("run");
             btn.disabled = true;
@@ -609,12 +903,12 @@ export async function renderTrustProfilePage(request, env) {
               btn.textContent = "Run report";
             }
           });
-  
-          document.getElementById('logout').addEventListener('click', async () => {
-            await fetch('/auth/logout', { method: 'POST' });
-            window.location.replace('/');
+
+          document.getElementById("logout").addEventListener("click", async () => {
+            await fetch("/auth/logout", { method: "POST" });
+            window.location.replace("/");
           });
-  
+
           load();
         </script>
       `
