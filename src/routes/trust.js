@@ -5,8 +5,8 @@ import { json, escapeHtml, redirect } from "../lib/http.js"
 import { pageShell } from "../lib/ui.js";
 import { requireSession, isRecruiter, isAdmin } from "../lib/session.js"; 
 import { normalizeResumeTextToProfileV1 } from "../engine/normalize_v1.js";
-import { defaultSignalConfigV1, runSignalsV1, signalTitle } from "../engine/signals_v1.js";
-import { scoreAndBucketV1 } from "../engine/scoring_v1.js";
+import { defaultSignalConfigV1, runSignalsV1, signalTitle } from "../engine/signals_v1";
+import { scoreAndBucketV1 } from "../engine/scoring_v1";
 import { safeJsonParse } from "../lib/utils.js";
 import { sha256Hex, normalizeForDocHash } from "../lib/crypto.js";
 import { consoleShell } from "../lib/console_ui.js";

@@ -8,11 +8,11 @@ import { sha256Hex, normalizeForDocHash } from "../lib/crypto.js"
 import { normalizeResumeTextToProfileV1 } from "./normalize_v1.js"
 // OLD imports 
 // import { runSignalsV1, defaultSignalConfigV1 } from "./signals_v1.js"
-//import { scoreAndBucketV1 } from "./scoring_v1.js"
+import { scoreAndBucketV1 } from "./scoring_v1"
 
 // New imports (02-26-26)
 import { runSignalsV1, defaultSignalConfigV1 } from "./signals_v1"
-import { scoreAndBucketV1 } from "../../core/domain/scoring"
+//import { scoreAndBucketV1 } from "../../core/domain/scoring"
 
 import { extractGithubUsername } from "../../core/github/extract"
 import { enrichGithubPublic } from "../../core/github/enrich"
