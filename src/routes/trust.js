@@ -2064,7 +2064,23 @@ export async function apiTrustReport(request, env) {
       signals
     });
 }
-export { apiTrustDebugProfile } from "../engine/signals_v1.js";
+
+export async function apiTrustDebugProfile(request, env) {
+  const sess = await requireSession(request, env);
+  if (!sess) return json({ error: "unauthorized" }, 401);
+
+  const url = new URL(request.url);
+  const id = (url.searchParams.get("id") || "").trim();
+  if (!id) return json({ error: "id required" }, 400);
+
+  const row = await env.DB.prepare(
+    "SELECT id, normalized_json FROM trust_candidate_profiles WHERE id = ?"
+  ).bind(id).first();
+
+  if (!row) return json({ error: "not found" }, 404);
+
+  return json({ id: row.id, profile: safeJsonParse(row.normalized_json) });
+}
 
 export async function apiTrustEvaluation(request, env) {
   const sess = await requireSession(request, env);

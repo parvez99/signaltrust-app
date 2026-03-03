@@ -10,7 +10,6 @@
  * Later: swap internals with robust parser/LLM, keep output schema stable.
  */
 import { normalizeWhitespace } from "../lib/utils.js"
-import { parseSingleYearFromLine } from "../engine/signals_v1.js"
 
 function prevNonEmptyLine(lines, idx) {
   for (let k = idx - 1; k >= 0; k--) {
@@ -20,6 +19,13 @@ function prevNonEmptyLine(lines, idx) {
   return "";
 }
 
+export function parseSingleYearFromLine(line) {
+  const s = (line || "").trim();
+  const m = s.match(/\b(19|20)\d{2}\b/);
+  if (!m) return null;
+  const y = m[0];
+  return { raw: y, iso: `${y}-12-31`, precision: "year" }; // treat as end-of-year
+}
 function looksLikeLocationToken(s) {
   const x = String(s || "").trim();
   if (!x) return false;
@@ -159,34 +165,131 @@ export function normalizeResumeTextToProfileV1({ candidateId, sourceText, source
 }
 
 export function computeParsingQuality({ ranges, exp, edu }) {
-    const expCount = Array.isArray(exp) ? exp.length : 0;
-    const eduCount = Array.isArray(edu) ? edu.length : 0;
-  
-    const expMonthOrDay = (Array.isArray(exp) ? exp : []).filter(r => {
-      const p1 = r?.start_date?.precision;
-      const p2 = r?.end_date?.precision;
-      return (p1 === "month" || p1 === "day" || p2 === "month" || p2 === "day");
-    }).length;
-  
-    const sectionsDetected = {
-      experience: !!ranges.experience,
-      education: !!ranges.education,
-      skills: !!ranges.skills
-    };
-  
-    // MVP quality heuristic
-    let overall = "medium";
-    if (expCount >= 2 && eduCount >= 1 && (sectionsDetected.experience || sectionsDetected.education)) overall = "medium";
-    if (expCount >= 3 && eduCount >= 2 && expMonthOrDay >= 2) overall = "high";
-    if (expCount === 0 || (!sectionsDetected.experience && !sectionsDetected.education)) overall = "low";
-  
-    return {
-      sections_detected: sectionsDetected,
-      experience_roles_count: expCount,
-      experience_with_month_or_day_precision: expMonthOrDay,
-      education_entries_count: eduCount,
-      overall
-    };
+  const roles = Array.isArray(exp) ? exp : [];
+  const expCount = roles.length;
+  const eduCount = Array.isArray(edu) ? edu.length : 0;
+
+  const expMonthOrDay = roles.filter(r => {
+    const p1 = r?.start_date?.precision;
+    const p2 = r?.end_date?.precision;
+    return (p1 === "month" || p1 === "day" || p2 === "month" || p2 === "day");
+  }).length;
+
+  const sectionsDetected = {
+    experience: !!ranges.experience,
+    education: !!ranges.education,
+    skills: !!ranges.skills
+  };
+
+  // --------------------------
+  // Suspicion / warning checks
+  // --------------------------
+  const warnings = [];
+
+  const locationish = (s) => {
+    const x = String(s || "").trim();
+    if (!x) return false;
+    // 1-2 word, letters/spaces only, no digits, no separators
+    if (x.length > 30) return false;
+    if (/[0-9]/.test(x)) return false;
+    if (/[-–—/|]/.test(x)) return false;
+    const words = x.split(/\s+/).filter(Boolean);
+    if (words.length > 3) return false;
+
+    // Common location-ish tokens (add more as you see)
+    if (/\b(india|mumbai|pune|delhi|bangalore|bengaluru|hyderabad|chennai|noida|gurgaon|gurugram|remote)\b/i.test(x)) return true;
+
+    // If it's capitalized words and NOT containing obvious title terms, treat as locationish
+    const titleTerms = /\b(engineer|developer|manager|lead|director|vp|architect|analyst|consultant|intern|product|designer|qa|sre|devops)\b/i;
+    if (!titleTerms.test(x) && /^[A-Za-z][A-Za-z .']+$/.test(x) && words.length <= 2) return true;
+
+    return false;
+  };
+
+  const titleish = (s) => /\b(engineer|developer|manager|lead|director|vp|architect|analyst|consultant|intern|sre|devops)\b/i.test(String(s||""));
+  const companyishBad = (s) => titleish(s); // company containing title terms is suspicious
+
+  let titleLooksLikeLocationCount = 0;
+  let companyLooksLikeTitleCount = 0;
+  let missingCoreFieldsCount = 0;
+  let dateOrderIssues = 0;
+
+  // Track duplicates of (company+title)
+  const comboCounts = new Map();
+
+  for (const r of roles) {
+    const t = r?.title?.raw || r?.title?.normalized || "";
+    const c = r?.company?.raw || r?.company?.normalized || "";
+
+    if (!t || !c) missingCoreFieldsCount++;
+
+    if (locationish(t)) titleLooksLikeLocationCount++;
+    if (companyishBad(c)) companyLooksLikeTitleCount++;
+
+    const key = `${String(r?.company?.normalized||"").trim()}|${String(r?.title?.normalized||"").trim()}`;
+    if (key !== "|") comboCounts.set(key, (comboCounts.get(key) || 0) + 1);
+
+    // Date sanity: end < start (only if both exist and not present)
+    const sIso = r?.start_date?.iso;
+    const eIso = r?.end_date?.iso;
+    if (sIso && eIso) {
+      const sMs = new Date(sIso).getTime();
+      const eMs = new Date(eIso).getTime();
+      if (Number.isFinite(sMs) && Number.isFinite(eMs) && eMs < sMs) dateOrderIssues++;
+    }
+  }
+
+  const dupCombos = [...comboCounts.entries()].filter(([k, v]) => k !== "|" && v >= 2);
+  const dupComboCount = dupCombos.length;
+
+  if (titleLooksLikeLocationCount >= 1) {
+    warnings.push(`Some roles have a title that looks like a location (${titleLooksLikeLocationCount}).`);
+  }
+  if (companyLooksLikeTitleCount >= 1) {
+    warnings.push(`Some roles have a company that looks like a job title (${companyLooksLikeTitleCount}).`);
+  }
+  if (dupComboCount >= 1) {
+    warnings.push(`Repeated company/title pairs detected (possible swapped fields or wrapped lines).`);
+  }
+  if (missingCoreFieldsCount >= Math.max(1, Math.ceil(expCount * 0.34))) {
+    warnings.push(`Many roles are missing a title or company (${missingCoreFieldsCount}/${expCount}).`);
+  }
+  if (dateOrderIssues >= 1) {
+    warnings.push(`Found roles with end date earlier than start date (${dateOrderIssues}).`);
+  }
+
+  // --------------------------
+  // MVP quality heuristic (base)
+  // --------------------------
+  let overall = "medium";
+  if (expCount >= 3 && eduCount >= 2 && expMonthOrDay >= 2) overall = "high";
+  if (expCount === 0 || (!sectionsDetected.experience && !sectionsDetected.education)) overall = "low";
+
+  // --------------------------
+  // Downgrade rules (demo-safe)
+  // --------------------------
+  const suspicious =
+    titleLooksLikeLocationCount >= 1 ||
+    companyLooksLikeTitleCount >= 1 ||
+    dupComboCount >= 1 ||
+    dateOrderIssues >= 1;
+
+  // If suspicious, don't allow "high", and often push to "low" for demo honesty
+  if (suspicious) {
+    if (overall === "high") overall = "medium";
+    // If it's pretty clearly broken, mark low
+    const verySuspicious = titleLooksLikeLocationCount >= 2 || missingCoreFieldsCount >= Math.ceil(expCount * 0.5);
+    if (verySuspicious) overall = "low";
+  }
+
+  return {
+    sections_detected: sectionsDetected,
+    experience_roles_count: expCount,
+    experience_with_month_or_day_precision: expMonthOrDay,
+    education_entries_count: eduCount,
+    overall,
+    warnings, // ✅ add this for UI + deciding LLM repair
+  };
 }
 
 export function matchEmails(text) {
@@ -247,9 +350,42 @@ export function extractExperienceBlocks(lines, mkEv) {
       const dr = parseDateRangeFromLine(line);
       if (!dr) continue;
       
-      // 🔥 Direct structural extraction
-      const companyLine = (lines[i - 1] || "").trim();
-      const titleLine   = (lines[i - 2] || "").trim();
+      // 🔥 Direct structural extraction (robust to wrapped company/location lines)
+
+      let line1 = (lines[i - 1] || "").trim(); // usually company or location
+      let line2 = (lines[i - 2] || "").trim(); // usually title or company
+      let line3 = (lines[i - 3] || "").trim(); // optional (for wrapped cases)
+
+      // Safety
+      if (!line1 || !line2) continue;
+      if (parseDateRangeFromLine(line1)) continue;
+      if (/^(experience|education|projects|skills|certifications)/i.test(line1)) continue;
+
+      let titleLine = line2;
+      let companyLine = line1;
+      let locationLine = "";
+
+      // 🧠 Detect wrapped case:
+      // If line1 looks like a location,
+      // AND line2 looks like "Company," (ends with comma or contains comma),
+      // AND line3 exists and isn't a date,
+      // then structure is likely:
+      // line3 = title
+      // line2 = company,
+      // line1 = location
+
+      if (
+        looksLikeLocationToken(line1) &&
+        line2 &&
+        (line2.endsWith(",") || line2.includes(",")) &&
+        line3 &&
+        !parseDateRangeFromLine(line3) &&
+        !isBulletLine(line3)
+      ) {
+        titleLine = line3;
+        companyLine = line2;
+        locationLine = line1;
+      }
       
       // Safety checks
       if (!companyLine || !titleLine) continue;

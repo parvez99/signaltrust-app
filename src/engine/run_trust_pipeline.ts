@@ -11,7 +11,7 @@ import { normalizeResumeTextToProfileV1 } from "./normalize_v1.js"
 //import { scoreAndBucketV1 } from "./scoring_v1.js"
 
 // New imports (02-26-26)
-import { runSignalsV1, defaultSignalConfigV1 } from "../../core/domain/signals"
+import { runSignalsV1, defaultSignalConfigV1 } from "./signals_v1"
 import { scoreAndBucketV1 } from "../../core/domain/scoring"
 
 import { extractGithubUsername } from "../../core/github/extract"
