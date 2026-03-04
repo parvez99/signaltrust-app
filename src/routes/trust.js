@@ -158,7 +158,7 @@ export async function renderTrustReportPage(request, env) {
           <h2 style="margin:6px 0 0;" id="headline">Loading…</h2>
           <div class="fine" id="meta"></div>
           <div class="fine" id="evalMeta" style="margin-top:6px;"></div>
-    
+          <div class="fine" id="narrative" style="margin-top:8px;"></div>
           <div style="margin-top:10px;">
             <button class="btn btn-ghost" id="btnExtracted" type="button" style="display:none;">
               View extracted timeline
@@ -211,6 +211,20 @@ export async function renderTrustReportPage(request, env) {
             </button>
     
             <span class="fine" id="copyToast" style="display:none;"></span>
+          </div>
+          
+          <div class="divider"></div>
+
+          <div class="row" style="gap:10px; align-items:center;">
+            <button class="btn btn-primary" id="btnAiSummary" type="button">
+              Generate AI Summary
+            </button>
+            <span class="fine" id="aiSummaryHint"></span>
+          </div>
+
+          <div class="card" id="aiSummaryCard" style="display:none; margin-top:12px;">
+            <div class="fine">AI Summary</div>
+            <div id="aiSummaryText" style="margin-top:8px; line-height:1.6;"></div>
           </div>
     
           <div class="divider"></div>
@@ -630,7 +644,8 @@ export async function renderTrustReportPage(request, env) {
     
             document.getElementById("headline").innerHTML =
               "Trust score: <b>" + score + "</b> " + bucketBadge(bucket);
-    
+            const narrativeEl = document.getElementById("narrative");
+            if (narrativeEl) narrativeEl.textContent = report?.narrative || "";
             document.getElementById("meta").textContent =
               "Hard-triggered: " + hard + " | Engine: " + (report.engine_version || "") + " | Created: " + (report.created_at || "");
             const em = document.getElementById("evalMeta");
@@ -689,6 +704,45 @@ export async function renderTrustReportPage(request, env) {
             if (e.key === "Escape") closeModal();
           });
           document.getElementById("refresh").addEventListener("click", load);
+          document.getElementById("btnAiSummary")?.addEventListener("click", async () => {
+            const btn = document.getElementById("btnAiSummary");
+            const hint = document.getElementById("aiSummaryHint");
+
+            if (!btn) return;
+
+            btn.disabled = true;
+            btn.textContent = "Generating…";
+            if (hint) hint.textContent = "Contacting AI…";
+
+            try {
+              const res = await fetch("/api/trust/ai-summary", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ trust_report_id: reportId })
+              });
+
+              const data = await res.json();
+
+              if (!res.ok) {
+                throw new Error(data.error || "AI summary failed");
+              }
+
+              const card = document.getElementById("aiSummaryCard");
+              const text = document.getElementById("aiSummaryText");
+
+              if (card && text) {
+                card.style.display = "block";
+                text.textContent = data.summary || "(No summary returned)";
+              }
+
+              if (hint) hint.textContent = "AI summary generated.";
+            } catch (e) {
+              if (hint) hint.textContent = "Error: " + String(e.message || e);
+            } finally {
+              btn.disabled = false;
+              btn.textContent = "Generate AI Summary";
+            }
+          });
           document.getElementById("logout").addEventListener("click", async function () {
             await fetch("/auth/logout", { method: "POST" });
             window.location.replace("/");
@@ -1680,6 +1734,31 @@ export async function apiTrustIngest(request, env) {
     });
 }
 
+function generateRiskNarrative(report, signals) {
+  const score = Number(report?.trust_score ?? 0);
+  const bucket = String(report?.bucket || "unknown");
+  const hard = !!report?.hard_triggered;
+
+  const list = Array.isArray(signals) ? signals : [];
+  const top = list
+    .slice()
+    .sort((a, b) => {
+      const sevRank = (t) => (t === "A" ? 0 : t === "B" ? 1 : 2);
+      const r = sevRank(a.severity_tier) - sevRank(b.severity_tier);
+      if (r !== 0) return r;
+      return Number(b.deduction || 0) - Number(a.deduction || 0);
+    })
+    .slice(0, 2);
+
+  if (!top.length) {
+    return `No major risk signals were triggered. Overall trust looks ${bucket} (score ${score}).`;
+  }
+
+  const reasons = top.map(s => `${s.title || s.signal_id}`).join(" and ");
+  const hardTxt = hard ? "Hard-triggered risk present. " : "";
+  return `${hardTxt}Overall trust looks ${bucket} (score ${score}) mainly due to ${reasons}.`;
+}
+
 export async function apiTrustRun(request, env) {
   // Read raw body once
   const raw = await request.text().catch(() => "")
@@ -2048,7 +2127,7 @@ export async function apiTrustReport(request, env) {
       explanation: r.explanation || "",
       suggested_questions: safeJsonParse(r.questions_json) || []
     }));
-  
+    const narrative = generateRiskNarrative(report, signals);
     return json({
       report: {
         id: report.id,
@@ -2059,6 +2138,7 @@ export async function apiTrustReport(request, env) {
         summary: safeJsonParse(report.summary_json) || {},
         engine_version: report.engine_version,
         created_at: report.created_at,
+        narrative,
         trust_evaluation_id: report.trust_evaluation_id || null
       },
       signals
@@ -2197,4 +2277,77 @@ export async function apiTrustPdf(request, env) {
       "cache-control": "private, max-age=60",
     },
   });
+}
+
+export async function apiTrustAiSummary(request, env) {
+  const sess = await requireSession(request, env);
+  if (!sess) return json({ error: "unauthorized" }, 401);
+
+  const allowed = isRecruiter(sess, env) || isAdmin(sess, env);
+  if (!allowed) return json({ error: "forbidden" }, 403);
+
+  let body = {};
+  try { body = await request.json(); } catch {}
+
+  const id = (body.trust_report_id || "").trim();
+  if (!id) return json({ error: "trust_report_id required" }, 400);
+
+  // Fetch report
+  const report = await env.DB.prepare(
+    `SELECT trust_score, bucket, hard_triggered
+     FROM trust_reports
+     WHERE id = ?1`
+  ).bind(id).first();
+
+  if (!report) return json({ error: "report not found" }, 404);
+
+  const { results } = await env.DB.prepare(
+    `SELECT signal_id, explanation, severity_tier, confidence
+     FROM trust_signals
+     WHERE trust_report_id = ?1
+       AND status = 'triggered'`
+  ).bind(id).all();
+
+  const signals = results || [];
+
+  // Build prompt
+  const prompt = `
+You are a hiring risk intelligence assistant.
+
+Generate a concise recruiter-facing briefing (5-8 sentences).
+Be neutral and analytical.
+Do not speculate beyond provided signals.
+
+Trust score: ${report.trust_score}
+Bucket: ${report.bucket}
+Hard triggered: ${report.hard_triggered ? "Yes" : "No"}
+
+Signals:
+${signals.map(s => `
+- ${s.signal_id} (Tier ${s.severity_tier}, ${s.confidence})
+  ${s.explanation}
+`).join("\n")}
+`;
+
+  // Call OpenAI (adjust to your existing LLM wrapper if needed)
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${env.OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "You are an analytical hiring risk assistant." },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.3
+    })
+  });
+
+  const data = await response.json();
+  const summary = data?.choices?.[0]?.message?.content || "No summary generated.";
+
+  return json({ summary });
 }

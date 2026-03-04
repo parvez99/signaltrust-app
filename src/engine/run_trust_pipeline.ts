@@ -16,6 +16,7 @@ import { runSignalsV1, defaultSignalConfigV1 } from "./signals_v1"
 
 import { extractGithubUsername } from "../../core/github/extract"
 import { enrichGithubPublic } from "../../core/github/enrich"
+import { generateRiskNarrative } from "./narrative_v1.js";
 
 export async function runTrustPipeline(args: {
   candidateId: string
@@ -250,6 +251,7 @@ export async function runTrustPipeline(args: {
 
   // 4️⃣ Score
   const scoring = scoreAndBucketV1(triggeredSignals)
+  const narrative = generateRiskNarrative(scoring, triggeredSignals);
 
   // Optional but recommended: use deterministic profile for report rendering
   return {
@@ -269,6 +271,7 @@ export async function runTrustPipeline(args: {
 
     triggeredSignals,
     scoring,
+    narrative,
   }
 }
 

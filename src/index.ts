@@ -38,7 +38,8 @@ import {
   apiTrustEvaluation,
   apiTrustEvaluationNormalized,
   apiTrustUpload,
-  apiTrustPdf
+  apiTrustPdf,
+  apiTrustAiSummary
 } from "./routes/trust.js";
 
 import { isRecruiter, isAdmin } from "./lib/session.js";
@@ -216,6 +217,7 @@ export default {
     if (path === "/trust/profile" && request.method === "GET") return renderTrustProfilePage(request, env);
     if (path === "/trust/signals" && request.method === "GET") return renderTrustSignalsPage(request, env);
     if (path === "/api/trust/ingest" && request.method === "POST") return apiTrustIngest(request, env);
+    if (path === "/api/trust/ai-summary" && request.method === "POST") return apiTrustAiSummary(request, env);
     if (path === "/api/trust/run" && request.method === "POST") return apiTrustRun(request, env);
     if (path === "/api/trust/report" && request.method === "GET") return apiTrustReport(request, env);
     if (path === "/api/trust/upload" && request.method === "POST") return apiTrustUpload(request, env);
