@@ -2357,28 +2357,45 @@ export async function apiTrustAiSummary(request, env) {
 
   const signals = results || [];
 
+  const ranked = [...signals].sort((a, b) => {
+    const sev = (t) => (t === "A" ? 0 : t === "B" ? 1 : 2);
+    const r = sev(a.severity_tier) - sev(b.severity_tier);
+    if (r !== 0) return r;
+    return String(a.confidence).localeCompare(String(b.confidence));
+  });
+  const topSignals = ranked.slice(0, 2);
+
   // Build prompt
   const prompt = `
   You are a senior hiring risk intelligence analyst.
   
-  Write a concise executive recruiter briefing (5–6 sentences).
+  Write a concise recruiter briefing in 4–6 sentences.
   
-  Strict tone rules:
-  - Analytical and composed.
-  - No conversational framing.
-  - Avoid words like "concern", "scrutiny", "thorough examination", "organizational standards".
-  - Do not sound like compliance or HR documentation.
-  - Frame findings as timeline ambiguity or verification complexity.
-  - Use language consistent with due-diligence risk analysis.
+  Hard rules:
+  - Neutral, due-diligence tone. No accusatory language.
+  - Do NOT use words like "fraud", "concern", "scrutiny", "compliance", "organizational standards".
+  - Use phrasing like: "verification effort", "timeline clarity", "scope validation".
+  - If the signal could be explained by startup dynamics, explicitly mention that as a plausible context.
+  - Always reference the top signal(s) explicitly.
   
+  Context:
   Risk bucket: ${report.bucket}
   Hard triggered: ${report.hard_triggered ? "Yes" : "No"}
+  
+  Top drivers:
+    ${topSignals.map(s => `- ${s.signal_id}: ${s.explanation}
+  `).join("\n")}
   
   Signals detected:
   ${signals.map(s => `
   - ${s.signal_id} (Tier ${s.severity_tier}, ${s.confidence})
     ${s.explanation}
   `).join("\n")}
+  
+  Output format:
+  1) One sentence summarizing score/bucket and top driver signal(s)
+  2) 1–2 sentences giving plausible context (e.g., startup titles)
+  3) 1–2 sentences listing what to verify (scope, team size, responsibilities, reporting line)
   `;
 
   // Call OpenAI (adjust to your existing LLM wrapper if needed)

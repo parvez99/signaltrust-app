@@ -744,7 +744,7 @@ export function signalCareerVelocity(profile: any) {
         flagged_role: summarizeRole(bestHit.role),
         rule: bestHit.kind === "director_plus" ? "<4y to Director/Head/VP/etc" : "<2y to Senior"
       },
-      explanation: `Rapid progression detected: "${bestHit.role?.title?.raw || "role"}" reached ~${bestHit.years.toFixed(1)} years after first listed role.`,
+      explanation: `Rapid progression detected: "${bestHit.role?.title?.raw || "role"}" reached ~${bestHit.years.toFixed(1)} years after the candidate's first recorded role. This may occur in startups or small teams but can also indicate title inflation.`,
       suggested_questions: [
         "Can you walk through how your scope/responsibilities expanded to match this title?",
         "Was this a formal title change or an internal leveling?"
