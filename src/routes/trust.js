@@ -575,7 +575,34 @@ export async function renderTrustReportPage(request, env) {
     
             const report = data.report;
             const signals = Array.isArray(data.signals) ? data.signals : [];
-    
+
+            // Auto-generate AI Summary on load (optional: only if not already shown)
+            try {
+              const res2 = await fetch("/api/trust/ai-summary", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ trust_report_id: reportId })
+              });
+              const j2 = await res2.json();
+
+              const card = document.getElementById("aiSummaryCard");
+              const text = document.getElementById("aiSummaryText");
+              const hint = document.getElementById("aiSummaryHint");
+              const btn = document.getElementById("btnAiSummary");
+
+              if (btn) { btn.style.display = "none"; btn.disabled = true; }
+
+              if (res2.ok && card && text) {
+                card.style.display = "block";
+                text.textContent = j2.summary || "(No summary returned)";
+                if (hint) hint.textContent = "";
+              } else {
+                if (hint) hint.textContent = "";
+              }
+            } catch (e) {
+              // ignore failures silently for now
+            }
+                
             __lastReport = report;
             __lastSignals = signals;
 
@@ -841,6 +868,10 @@ export async function renderTrustProfilePage(request, env) {
           <div style="margin-top:10px;">
             <div class="riskbar"><div id="riskFill"></div></div>
           </div>
+          <div class="card" id="aiSummaryCard" style="display:none; margin-top:12px;">
+            <div class="fine">AI Summary</div>
+            <div id="aiSummaryText" style="margin-top:8px; line-height:1.6;"></div>
+          </div>
           <div class="divider"></div>
   
           <div id="reports" class="fine">Loading reports…</div>
@@ -919,6 +950,22 @@ export async function renderTrustProfilePage(request, env) {
 
             // ✅ Update risk bar from latest report (if any)
             const latest = reports[0] || null;
+            if (latest) {
+              try {
+                const r = await fetch("/api/trust/ai-summary", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ trust_report_id: latest.id })
+                });
+                const j = await r.json();
+                const card = document.getElementById("aiSummaryCard");
+                const text = document.getElementById("aiSummaryText");
+                if (r.ok && card && text) {
+                  card.style.display = "block";
+                  text.textContent = j.summary || "(No summary returned)";
+                }
+              } catch {}
+            }
             const rf = document.getElementById("riskFill");
             if (rf && latest) {
               const pct = Math.max(0, Math.min(100, Number(latest.trust_score || 0)));
@@ -2312,22 +2359,27 @@ export async function apiTrustAiSummary(request, env) {
 
   // Build prompt
   const prompt = `
-You are a hiring risk intelligence assistant.
-
-Generate a concise recruiter-facing briefing (5-8 sentences).
-Be neutral and analytical.
-Do not speculate beyond provided signals.
-
-Trust score: ${report.trust_score}
-Bucket: ${report.bucket}
-Hard triggered: ${report.hard_triggered ? "Yes" : "No"}
-
-Signals:
-${signals.map(s => `
-- ${s.signal_id} (Tier ${s.severity_tier}, ${s.confidence})
-  ${s.explanation}
-`).join("\n")}
-`;
+  You are a senior hiring risk intelligence analyst.
+  
+  Write a concise executive recruiter briefing (5–6 sentences).
+  
+  Strict tone rules:
+  - Analytical and composed.
+  - No conversational framing.
+  - Avoid words like "concern", "scrutiny", "thorough examination", "organizational standards".
+  - Do not sound like compliance or HR documentation.
+  - Frame findings as timeline ambiguity or verification complexity.
+  - Use language consistent with due-diligence risk analysis.
+  
+  Risk bucket: ${report.bucket}
+  Hard triggered: ${report.hard_triggered ? "Yes" : "No"}
+  
+  Signals detected:
+  ${signals.map(s => `
+  - ${s.signal_id} (Tier ${s.severity_tier}, ${s.confidence})
+    ${s.explanation}
+  `).join("\n")}
+  `;
 
   // Call OpenAI (adjust to your existing LLM wrapper if needed)
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -2346,8 +2398,12 @@ ${signals.map(s => `
     })
   });
 
-  const data = await response.json();
-  const summary = data?.choices?.[0]?.message?.content || "No summary generated.";
+  const data = await response.json().catch(() => null);
 
+  if (!response.ok) {
+    return json({ error: data?.error?.message || "OpenAI request failed" }, 502);
+  }
+  
+  const summary = data?.choices?.[0]?.message?.content || "No summary generated.";
   return json({ summary });
 }
