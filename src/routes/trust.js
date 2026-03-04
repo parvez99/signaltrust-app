@@ -120,17 +120,66 @@ export async function renderTrustReportPage(request, env) {
       center: pdfUrl
       ? `
         <div style="padding:12px;">
-          <div class="row" style="align-items:center; gap:10px; margin-bottom:10px;">
-            <div style="font-weight:900;">Resume</div>
-            <span class="pill">PDF</span>
-            <span class="spacer"></span>
-            <a class="btn btn-sm btn-ghost" href="${pdfUrl}" target="_blank">Open</a>
+          <style>
+            .doc-grid{ display:grid; grid-template-columns: 280px 1fr; gap:12px; }
+            .doc-side{ height:82vh; overflow:auto; }
+            .doc-kv{ display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); }
+            .doc-kv:last-child{ border-bottom:0; }
+            .doc-k{ color: var(--muted); font-size:12px; }
+            .doc-v{ font-weight:800; color: rgba(11,18,32,.86); font-size:12px; text-align:right; }
+            .doc-sec{ margin-top:12px; }
+            .doc-sec-title{ font-weight:900; margin:4px 0 8px; }
+            .mini-pill-btn{
+              border:1px solid var(--border);
+              background: rgba(11,18,32,.03);
+              padding:6px 10px;
+              border-radius:999px;
+              font-weight:900;
+              cursor:pointer;
+            }
+          </style>
+      
+          <div class="doc-grid">
+            <!-- LEFT SIDEBAR (like screenshot 1) -->
+            <div class="card doc-side">
+              <div class="row" style="align-items:center; gap:10px;">
+                <div style="font-weight:1000;">Document</div>
+                <span class="spacer"></span>
+                <button class="mini-pill-btn" type="button" title="Signals (coming soon)">Signals ▾</button>
+              </div>
+      
+              <div class="doc-sec">
+                <div class="doc-sec-title">Uploaded</div>
+                <div class="doc-kv"><div class="doc-k">Time</div><div class="doc-v" id="docUploaded">—</div></div>
+                <div class="doc-kv"><div class="doc-k">Page Count</div><div class="doc-v" id="docPages">—</div></div>
+                <div class="doc-kv"><div class="doc-k">Format</div><div class="doc-v">PDF</div></div>
+                <div class="doc-kv"><div class="doc-k">Type</div><div class="doc-v">Resume</div></div>
+                <div class="doc-kv"><div class="doc-k">Quality Score</div><div class="doc-v" id="docQuality">—</div></div>
+              </div>
+      
+              <div class="doc-sec">
+                <div class="doc-sec-title">Content</div>
+                <div class="doc-kv"><div class="doc-k">Candidate</div><div class="doc-v" id="docCandidate">—</div></div>
+                <div class="doc-kv"><div class="doc-k">Email</div><div class="doc-v" id="docEmail">—</div></div>
+                <div class="doc-kv"><div class="doc-k">Location</div><div class="doc-v" id="docLocation">—</div></div>
+              </div>
+            </div>
+      
+            <!-- PDF VIEWER -->
+            <div>
+              <div class="row" style="align-items:center; gap:10px; margin-bottom:10px;">
+                <div style="font-weight:900;">Resume</div>
+                <span class="pill">PDF</span>
+                <span class="spacer"></span>
+                <a class="btn btn-sm btn-ghost" href="${pdfUrl}" target="_blank">Open</a>
+              </div>
+      
+              <iframe
+                src="${pdfUrl}"
+                style="width:100%; height:82vh; border:0; border-radius:14px; background:#fff;">
+              </iframe>
+            </div>
           </div>
-    
-          <iframe
-            src="${pdfUrl}"
-            style="width:100%; height:82vh; border:0; border-radius:14px; background:#fff;">
-          </iframe>
         </div>
       `
       : `
@@ -154,11 +203,37 @@ export async function renderTrustReportPage(request, env) {
         </div>
     
         <div class="card" style="margin-top:12px;">
-          <div class="fine">Trust Report</div>
-          <h2 style="margin:6px 0 0;" id="headline">Loading…</h2>
-          <div class="fine" id="meta"></div>
-          <div class="fine" id="evalMeta" style="margin-top:6px;"></div>
-          <div class="fine" id="narrative" style="margin-top:8px;"></div>
+        <div class="row" style="align-items:flex-end; gap:10px;">
+          <div>
+            <div class="fine">Trust Report</div>
+            <div id="headlineTitle" style="margin-top:6px; font-weight:1000; font-size:18px;">Loading…</div>
+          </div>
+
+          <span class="spacer"></span>
+
+          <div class="row" style="gap:10px; align-items:center;">
+            <div style="text-align:right;">
+              <div class="fine" style="opacity:.85;">Trust score</div>
+              <div id="scoreMini" style="font-weight:1100; font-size:18px; line-height:1;">—</div>
+            </div>
+            <div id="bucketMini"></div>
+          </div>
+        </div>
+
+        <div style="margin-top:10px;">
+          <div class="row" style="align-items:center;">
+            <div class="fine" id="riskLabel">Risk</div>
+            <span class="spacer"></span>
+            <div class="fine" id="riskNumber">—</div>
+          </div>
+          <div class="riskbar" style="margin-top:6px;">
+            <div id="riskFill"></div>
+          </div>
+        </div>
+
+        <div class="fine" id="meta" style="margin-top:10px;"></div>
+        <div class="fine" id="evalMeta" style="margin-top:6px;"></div>
+        <div class="fine" id="narrative" style="margin-top:8px;"></div>
           <div style="margin-top:10px;">
             <button class="btn btn-ghost" id="btnExtracted" type="button" style="display:none;">
               View extracted timeline
@@ -560,14 +635,16 @@ export async function renderTrustReportPage(request, env) {
             const btnCopySummary = document.getElementById("btnCopySummary");
             const btnCopyQuestions = document.getElementById("btnCopyQuestions");
     
-            document.getElementById("headline").textContent = "Loading...";
+            const ht = document.getElementById("headlineTitle");
+            if (ht) ht.textContent = "Loading…";
             document.getElementById("insights").innerHTML = '<div class="fine">Loading...</div>';
     
             const res = await fetch("/api/trust/report?id=" + encodeURIComponent(reportId));
             const data = await readJson(res);
     
             if (!res.ok) {
-              document.getElementById("headline").textContent = "Failed to load";
+              const ht2 = document.getElementById("headlineTitle");
+              if (ht2) ht2.textContent = "Failed to load";
               document.getElementById("meta").textContent = data.error || "Error";
               document.getElementById("insights").innerHTML = "";
               return;
@@ -589,8 +666,6 @@ export async function renderTrustReportPage(request, env) {
               const text = document.getElementById("aiSummaryText");
               const hint = document.getElementById("aiSummaryHint");
               const btn = document.getElementById("btnAiSummary");
-
-              if (btn) { btn.style.display = "none"; btn.disabled = true; }
 
               if (res2.ok && card && text) {
                 card.style.display = "block";
@@ -665,20 +740,50 @@ export async function renderTrustReportPage(request, env) {
                 openModal();
               };
             }            
+    
             const score = Number(report.trust_score || 0);
             const bucket = String(report.bucket || "unknown");
             const hard = report.hard_triggered ? "Yes" : "No";
-    
-            document.getElementById("headline").innerHTML =
-              "Trust score: <b>" + score + "</b> " + bucketBadge(bucket);
+
+            // NEW: compact header like screenshot
+            const titleEl = document.getElementById("headlineTitle");
+            if (titleEl) titleEl.textContent = "Summary";
+
+            const scoreMini = document.getElementById("scoreMini");
+            if (scoreMini) scoreMini.textContent = String(score);
+
+            const bucketMini = document.getElementById("bucketMini");
+            if (bucketMini) bucketMini.innerHTML = bucketBadge(bucket);
+
+            // NEW: risk bar (inverse of trust score)
+            const risk = Math.max(0, Math.min(100, 100 - score));
+            const riskNumber = document.getElementById("riskNumber");
+            if (riskNumber) riskNumber.textContent = String(risk);
+
+            const riskFill = document.getElementById("riskFill");
+            if (riskFill) {
+              riskFill.style.width = risk + "%";
+              // color by bucket
+              if (bucket === "green") riskFill.style.background = "rgba(12,122,75,.55)";
+              else if (bucket === "yellow") riskFill.style.background = "rgba(245,158,11,.65)";
+              else if (bucket === "red") riskFill.style.background = "rgba(180,35,24,.60)";
+              else riskFill.style.background = "rgba(11,18,32,.25)";
+            }
+
             const narrativeEl = document.getElementById("narrative");
             if (narrativeEl) narrativeEl.textContent = report?.narrative || "";
+
             document.getElementById("meta").textContent =
               "Hard-triggered: " + hard + " | Engine: " + (report.engine_version || "") + " | Created: " + (report.created_at || "");
+
             const em = document.getElementById("evalMeta");
             if (em) {
               em.textContent = report.trust_evaluation_id ? ("Evaluation: " + report.trust_evaluation_id) : "Evaluation: —";
             }
+
+            // Populate left document sidebar (best-effort)
+            const docUploaded = document.getElementById("docUploaded");
+            if (docUploaded) docUploaded.textContent = report.created_at || "—";
             const sum = report.summary || {};
             document.getElementById("summary").innerHTML = [
               pill("Tier A: " + (sum.tier_a_count ?? 0), "rgba(180,35,24,.08)", "rgba(180,35,24,.22)", "#b42318"),
@@ -2326,6 +2431,97 @@ export async function apiTrustPdf(request, env) {
   });
 }
 
+function selectTopSignals(signals, limit = 3) {
+  const tierWeight = { A: 100, B: 60, C: 30 };
+  const confWeight = { high: 20, medium: 10, low: 0 };
+
+  // Rank: severity tier -> absolute deduction -> confidence
+  const ranked = [...signals].sort((a, b) => {
+    const aScore =
+      (tierWeight[a.severity_tier] ?? 0) +
+      Math.abs(Number(a.deduction || 0)) +
+      (confWeight[String(a.confidence || "").toLowerCase()] ?? 0);
+
+    const bScore =
+      (tierWeight[b.severity_tier] ?? 0) +
+      Math.abs(Number(b.deduction || 0)) +
+      (confWeight[String(b.confidence || "").toLowerCase()] ?? 0);
+
+    return bScore - aScore;
+  });
+
+  // Dedupe by signal_id for stability
+  const out = [];
+  const seen = new Set();
+  for (const s of ranked) {
+    if (seen.has(s.signal_id)) continue;
+    seen.add(s.signal_id);
+    out.push(s);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function buildAiSummaryPrompts({ report, topSignals, allSignals }) {
+  const system = [
+    "You are a recruiter-facing due diligence assistant.",
+    "Tone: neutral, factual, and verification-oriented.",
+    "Do NOT praise the candidate. Do NOT sound promotional.",
+    "Do NOT make hiring recommendations (do not say hire/reject).",
+    "Do NOT invent facts. Only use the provided signals and evidence.",
+    "",
+    "Output MUST be valid markdown with EXACT sections:",
+    "## Summary",
+    "## Top signals referenced",
+    "## Evidence (what we saw)",
+    "## Suggested questions (to ask the candidate)",
+    "## What to verify next (quick checks)",
+  ].join("\n");
+
+  const topBlock = (topSignals || []).map((s, i) => {
+    // evidence_json/questions_json are stored as TEXT in D1 (JSON string)
+    const evidence = safeJsonParse(s.evidence_json) ?? {};
+    const questions = safeJsonParse(s.questions_json) ?? [];
+
+    return [
+      `Signal ${i + 1}:`,
+      `- id: ${s.signal_id}`,
+      `- title: ${s.title || signalTitle?.(s.signal_id) || s.signal_id}`,
+      `- category: ${s.category}`,
+      `- tier: ${s.severity_tier}`,
+      `- confidence: ${s.confidence}`,
+      `- deduction: ${s.deduction}`,
+      `- explanation: ${s.explanation}`,
+      `- evidence_json: ${JSON.stringify(evidence)}`,
+      `- questions_json: ${JSON.stringify(questions)}`,
+    ].join("\n");
+  }).join("\n\n");
+
+  const allList = (allSignals || []).map((s) => {
+    return `- ${s.signal_id} (Tier ${s.severity_tier}, ${s.confidence}, deduction ${s.deduction})`;
+  }).join("\n");
+
+  const user = [
+    `Context:`,
+    `- Trust score: ${report.trust_score} (${report.bucket})`,
+    `- Hard triggered: ${report.hard_triggered ? "Yes" : "No"}`,
+    "",
+    "Top signals you MUST explicitly reference in this summary (use same order):",
+    topBlock || "(no triggered signals provided)",
+    "",
+    "All triggered signals (for awareness):",
+    allList || "(none)",
+    "",
+    "Rules:",
+    "- In 'Top signals referenced', list the signal ids and titles in the same order as provided.",
+    "- In 'Evidence', ONLY cite facts from evidence_json/explanation. If evidence is thin, say so.",
+    "- In 'Suggested questions', write 2–4 questions per top signal (verification-oriented).",
+    "- In 'What to verify next', provide fast checks (docs, references, links, artifacts) without assuming access.",
+  ].join("\n");
+
+  return { system, user };
+}
+
 export async function apiTrustAiSummary(request, env) {
   const sess = await requireSession(request, env);
   if (!sess) return json({ error: "unauthorized" }, 401);
@@ -2339,7 +2535,7 @@ export async function apiTrustAiSummary(request, env) {
   const id = (body.trust_report_id || "").trim();
   if (!id) return json({ error: "trust_report_id required" }, 400);
 
-  // Fetch report
+  // Fetch report (include trust_score since we want it in summary)
   const report = await env.DB.prepare(
     `SELECT trust_score, bucket, hard_triggered
      FROM trust_reports
@@ -2348,8 +2544,10 @@ export async function apiTrustAiSummary(request, env) {
 
   if (!report) return json({ error: "report not found" }, 404);
 
+  // Fetch triggered signals (include fields needed for ranking + evidence)
   const { results } = await env.DB.prepare(
-    `SELECT signal_id, explanation, severity_tier, confidence
+    `SELECT signal_id, category, severity_tier, confidence, deduction,
+            evidence_json, explanation, questions_json
      FROM trust_signals
      WHERE trust_report_id = ?1
        AND status = 'triggered'`
@@ -2357,48 +2555,37 @@ export async function apiTrustAiSummary(request, env) {
 
   const signals = results || [];
 
-  const ranked = [...signals].sort((a, b) => {
-    const sev = (t) => (t === "A" ? 0 : t === "B" ? 1 : 2);
-    const r = sev(a.severity_tier) - sev(b.severity_tier);
-    if (r !== 0) return r;
-    return String(a.confidence).localeCompare(String(b.confidence));
+  // Pick top 3 drivers (stable + explainable ranking)
+  const topSignals = selectTopSignals(signals, 3);
+
+  // Build prompts (neutral, due-diligence, references top signals explicitly)
+  const { system, user } = buildAiSummaryPrompts({
+    report,
+    topSignals,
+    allSignals: signals
   });
-  const topSignals = ranked.slice(0, 2);
 
-  // Build prompt
-  const prompt = `
-  You are a senior hiring risk intelligence analyst.
-  
-  Write a concise recruiter briefing in 4–6 sentences.
-  
-  Hard rules:
-  - Neutral, due-diligence tone. No accusatory language.
-  - Do NOT use words like "fraud", "concern", "scrutiny", "compliance", "organizational standards".
-  - Use phrasing like: "verification effort", "timeline clarity", "scope validation".
-  - If the signal could be explained by startup dynamics, explicitly mention that as a plausible context.
-  - Always reference the top signal(s) explicitly.
-  
-  Context:
-  Risk bucket: ${report.bucket}
-  Hard triggered: ${report.hard_triggered ? "Yes" : "No"}
-  
-  Top drivers:
-    ${topSignals.map(s => `- ${s.signal_id}: ${s.explanation}
-  `).join("\n")}
-  
-  Signals detected:
-  ${signals.map(s => `
-  - ${s.signal_id} (Tier ${s.severity_tier}, ${s.confidence})
-    ${s.explanation}
-  `).join("\n")}
-  
-  Output format:
-  1) One sentence summarizing score/bucket and top driver signal(s)
-  2) 1–2 sentences giving plausible context (e.g., startup titles)
-  3) 1–2 sentences listing what to verify (scope, team size, responsibilities, reporting line)
-  `;
+  // ---- Optional caching (DB) ----
+  // Requires migration in section (2) below.
+  const model = "gpt-4o-mini";
+  let promptHash = "";
+  try {
+    promptHash = await sha256Hex(`${model}\n${system}\n\n${user}`);
+    const cached = await env.DB.prepare(
+      `SELECT summary
+       FROM trust_ai_summaries
+       WHERE trust_report_id = ?1 AND model = ?2 AND prompt_hash = ?3
+       LIMIT 1`
+    ).bind(id, model, promptHash).first();
 
-  // Call OpenAI (adjust to your existing LLM wrapper if needed)
+    if (cached?.summary) {
+      return json({ summary: cached.summary, cached: true });
+    }
+  } catch {
+    // If cache table doesn't exist yet, continue without caching
+  }
+
+  // Call OpenAI
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -2406,12 +2593,12 @@ export async function apiTrustAiSummary(request, env) {
       "Authorization": `Bearer ${env.OPENAI_API_KEY}`
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model,
       messages: [
-        { role: "system", content: "You are an analytical hiring risk assistant." },
-        { role: "user", content: prompt }
+        { role: "system", content: system },
+        { role: "user", content: user }
       ],
-      temperature: 0.3
+      temperature: 0.2
     })
   });
 
@@ -2420,7 +2607,29 @@ export async function apiTrustAiSummary(request, env) {
   if (!response.ok) {
     return json({ error: data?.error?.message || "OpenAI request failed" }, 502);
   }
-  
+
   const summary = data?.choices?.[0]?.message?.content || "No summary generated.";
-  return json({ summary });
+
+  // Write cache (best-effort)
+  if (promptHash) {
+    try {
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO trust_ai_summaries
+          (id, trust_report_id, model, prompt_hash, summary, created_at)
+         VALUES
+          (?1, ?2, ?3, ?4, ?5, ?6)`
+      ).bind(
+        crypto.randomUUID(),
+        id,
+        model,
+        promptHash,
+        summary,
+        new Date().toISOString()
+      ).run();
+    } catch {
+      // ignore cache write failures
+    }
+  }
+
+  return json({ summary, cached: false });
 }
