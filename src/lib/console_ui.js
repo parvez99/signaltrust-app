@@ -73,11 +73,9 @@ export function consoleShell({
         }
         /* when rail is expanded, push content instead of overlapping */
         .console.rail-open{
-          grid-template-columns: 248px 1fr;
+          grid-template-columns: 208px 1fr;
         }
-        .rail-inner{
-          padding: 12px;
-        }
+        .rail-inner{ padding: 10px; }
 
         .brand{
           display:flex;
@@ -87,17 +85,10 @@ export function consoleShell({
           min-height: 36px;
         }
         .brand-mark{
-          width: 34px;
-          height: 34px;
-          border-radius: 12px;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          font-weight: 900;
-          background: rgba(0,170,170,.14);
-          border: 1px solid rgba(0,170,170,.35);
-          color: rgba(0,120,120,1);
-          flex: 0 0 auto;
+          width: 30px;
+          height: 30px;
+          border-radius: 10px;
+          font-size: 13px;
         }
         .brand-text{
           display:flex;
@@ -133,18 +124,7 @@ export function consoleShell({
           margin-top: 10px;
         }
 
-        .nav-item{
-          display:flex;
-          align-items:center;
-          gap:10px;
-          padding: 10px 10px;
-          border-radius: 14px;
-          border: 1px solid transparent;
-          color: rgba(11,18,32,.86);
-          text-decoration:none;
-          background: rgba(11,18,32,.02);
-          transition: background .12s ease, border-color .12s ease, transform .12s ease;
-        }
+        .nav-item{ padding: 8px 8px; border-radius: 12px; }
         .nav-item:hover{
           background: rgba(11,18,32,.05);
           border-color: rgba(11,18,32,.08);
@@ -157,18 +137,7 @@ export function consoleShell({
           font-weight: 800;
         }
 
-        .nav-ico{
-          width: 28px;
-          height: 28px;
-          border-radius: 12px;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          background: rgba(11,18,32,.04);
-          border: 1px solid rgba(11,18,32,.08);
-          flex: 0 0 auto;
-          font-size: 13px;
-        }
+        .nav-ico{ width: 26px; height: 26px; border-radius: 10px; font-size: 12px; }
         .nav-label{
           opacity: 0;
           transform: translateX(-6px);
@@ -282,7 +251,7 @@ export function consoleShell({
 
         /* Better mobile stacking */
         @media (max-width: 980px){
-          .console{ grid-template-columns: 72px 1fr; }
+          .console{ grid-template-columns: 64px 1fr; }
           .main-workspace{ grid-template-columns: 1fr; }
           .pane-body{ max-height: none; }
         }

@@ -82,42 +82,46 @@ export async function renderTrustHome(request, env) {
     });
 }
 export async function renderTrustReportPage(request, env) {
-    const sess = await requireSession(request, env);
-    if (!sess) return redirect("/");
-  
-    const allowed = isRecruiter(sess, env) || isAdmin(sess, env);
-    if (!allowed) return new Response("Forbidden", { status: 403 });
-  
-    const url = new URL(request.url);
-    const id = (url.searchParams.get("id") || "").trim();
-    if (!id) return new Response("Missing report id", { status: 400 });
-  
-    const who = escapeHtml(sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter");
-    // Look up the profile id + stored PDF key for this report
-    const profileRow = await env.DB.prepare(
-      `SELECT p.id AS profile_id, p.source_file_key
-      FROM trust_candidate_profiles p
-      JOIN trust_reports r ON r.trust_profile_id = p.id
-      WHERE r.id = ?1
-      LIMIT 1`
-    ).bind(id).first();
+  const sess = await requireSession(request, env);
+  if (!sess) return redirect("/");
 
-    const profileId = profileRow?.profile_id || null;
+  const allowed = isRecruiter(sess, env) || isAdmin(sess, env);
+  if (!allowed) return new Response("Forbidden", { status: 403 });
 
-    let pdfUrl = null;
-    if (profileRow?.source_file_key) {
-      pdfUrl = "/api/trust/pdf?report_id=" + encodeURIComponent(id);
-    }
-  
-    const html = consoleShell({
-      title: "Investigation Workspace",
-      who,
-      active: "profiles",
-      mode: "workspace",
-    
-      // CENTER PANE (Document)
-      // For now this is a placeholder. In Phase 2 we'll wire an iframe/object to a real PDF URL.
-      center: pdfUrl
+  const url = new URL(request.url);
+  const id = (url.searchParams.get("id") || "").trim();
+  if (!id) return new Response("Missing report id", { status: 400 });
+
+  const who = escapeHtml(
+    sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter"
+  );
+
+  // Look up the profile id + stored PDF key for this report
+  const profileRow = await env.DB.prepare(
+    `SELECT p.id AS profile_id, p.source_file_key
+     FROM trust_candidate_profiles p
+     JOIN trust_reports r ON r.trust_profile_id = p.id
+     WHERE r.id = ?1
+     LIMIT 1`
+  )
+    .bind(id)
+    .first();
+
+  const profileId = profileRow?.profile_id || null;
+
+  let pdfUrl = null;
+  if (profileRow?.source_file_key) {
+    pdfUrl = "/api/trust/pdf?report_id=" + encodeURIComponent(id);
+  }
+
+  const html = consoleShell({
+    title: "Investigation Workspace",
+    who,
+    active: "profiles",
+    mode: "workspace",
+
+    // CENTER PANE (Document)
+    center: pdfUrl
       ? `
         <div style="padding:0;">
           <style>
@@ -128,10 +132,10 @@ export async function renderTrustReportPage(request, env) {
               align-items: stretch;
             }
 
-            /* Sidebar should feel like the left panel in your “desired UI” */
+            /* Sidebar */
             .doc-side{
               position: relative;
-              height: calc(100vh - 120px);  /* tune if needed */
+              height: calc(100vh - 120px);
               overflow: hidden;
               border-radius: 16px;
               background: rgba(255,255,255,.92);
@@ -145,16 +149,12 @@ export async function renderTrustReportPage(request, env) {
               padding: 12px;
             }
 
-            /* PDF area */
-            .doc-main{
-              min-width: 0;
-            }
+            .doc-main{ min-width: 0; }
 
-            /* Toggle button stays visible even when collapsed */
             .doc-toggle{
               position: absolute;
               top: 10px;
-              right: -12px;                 /* floats between sidebar + pdf */
+              right: -12px;
               width: 28px;
               height: 28px;
               border-radius: 10px;
@@ -165,17 +165,8 @@ export async function renderTrustReportPage(request, env) {
               box-shadow: 0 10px 24px rgba(11,18,32,.12);
             }
 
-            /* Collapsed state: sidebar becomes a slim rail, not “gone” */
-            .doc-grid.collapsed{
-              grid-template-columns: 54px 1fr;
-            }
-
-            .doc-grid.collapsed .doc-side-inner{
-              opacity: 0;
-              pointer-events: none;
-            }
-
-            /* Add a vertical “Document” label in collapsed rail */
+            .doc-grid.collapsed{ grid-template-columns: 54px 1fr; }
+            .doc-grid.collapsed .doc-side-inner{ opacity: 0; pointer-events: none; }
             .doc-grid.collapsed .doc-side::after{
               content: "Document";
               position: absolute;
@@ -189,163 +180,117 @@ export async function renderTrustReportPage(request, env) {
               color: rgba(11,18,32,.55);
               letter-spacing: .08em;
             }
+
             .doc-kv{ display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); }
             .doc-kv:last-child{ border-bottom:0; }
             .doc-k{ color: var(--muted); font-size:12px; }
             .doc-v{ font-weight:800; color: rgba(11,18,32,.86); font-size:12px;}
             .doc-sec{ margin-top:12px; }
             .doc-sec-title{ font-weight:900; margin:4px 0 8px; }
-            .mini-pill-btn{
-              border:1px solid var(--border);
-              background: rgba(11,18,32,.03);
-              padding:6px 10px;
-              border-radius:999px;
-              font-weight:900;
-              cursor:pointer;
-            }
-            /* --- Hard stop: nothing in the right pane should bleed out --- */
-            .card { overflow: hidden; }                 /* clips any children */
-            .rt-panel { overflow: hidden; }             /* extra safety */
-            #insights { width: 100%; min-width: 0; }    /* allow shrink */
-            .insight-list { width: 100%; min-width: 0; }
 
-            /* --- Critical flex shrink fixes (this is usually the culprit) --- */
+            /* --- Hard stop: nothing in the right pane should bleed out --- */
+            .card { overflow: hidden; }
+            .rt-panel { overflow: hidden; }
+            #insights { width: 100%; min-width: 0; }
+            .insight-list { width: 100%; min-width: 0; }
             .insight-row { width: 100%; min-width: 0; box-sizing: border-box; }
             .insight-left { min-width: 0; }
-            .insight-left > div { min-width: 0; }       /* the text column wrapper */
+            .insight-left > div { min-width: 0; }
             .insight-title, .insight-sub { min-width: 0; }
+            .insight-title, .insight-sub { overflow: hidden; text-overflow: ellipsis; }
 
-            /* If anything still tries to overflow, this guarantees it won’t */
-            .insight-title, .insight-sub {
-              overflow: hidden;
-              text-overflow: ellipsis;
-            }
             /* Enterprise typography */
             :root{
               --ink-strong: rgba(11,18,32,.88);
               --ink: rgba(11,18,32,.78);
               --ink-soft: rgba(11,18,32,.62);
             }
-
             body{
               -webkit-font-smoothing: antialiased;
               -moz-osx-font-smoothing: grayscale;
               letter-spacing: .01em;
             }
-
-            /* Soften heavy headings */
             #headlineTitle{
               font-weight: 700 !important;
               color: var(--ink-strong);
               font-size: 16px !important;
             }
+            .fine{ color: var(--ink-soft) !important; font-weight: 500 !important; }
+            .btn{ font-weight: 600 !important; }
+            .doc-sec-title{ font-weight: 650 !important; color: var(--ink-strong); letter-spacing: .01em; }
+            .doc-k{ color: var(--ink-soft) !important; font-weight: 500 !important; }
+            .doc-v{ color: var(--ink) !important; font-weight: 600 !important; }
 
-            /* Labels */
-            .fine{
-              color: var(--ink-soft) !important;
-              font-weight: 500 !important;
-            }
+            .insight-title{ font-weight: 650 !important; color: var(--ink-strong); font-size: 13px !important; }
+            .insight-sub{ color: var(--ink-soft) !important; font-weight: 500 !important; font-size: 12px !important; }
+            .card{ box-shadow: 0 10px 28px rgba(11,18,32,.06) !important; }
 
-            /* Buttons/pills less shouty */
-            .btn{
-              font-weight: 600 !important;
-            }
-
-            /* Left “Document” pane sections */
-            .doc-sec-title{
-              font-weight: 650 !important;
-              color: var(--ink-strong);
-              letter-spacing: .01em;
-            }
-            .doc-k{
-              color: var(--ink-soft) !important;
-              font-weight: 500 !important;
-            }
-            .doc-v{
-              color: var(--ink) !important;
-              font-weight: 600 !important;
-            }
-
-            /* Insight rows: lighter, more enterprise */
-            .insight-title{
-              font-weight: 650 !important;
-              color: var(--ink-strong);
-              font-size: 13px !important;
-            }
-            .insight-sub{
-              color: var(--ink-soft) !important;
-              font-weight: 500 !important;
-              font-size: 12px !important;
-            }
-
-            /* Cards: subtle */
-            .card{
-              box-shadow: 0 10px 28px rgba(11,18,32,.06) !important;
-            }
             /* Make all grid/flex containers allow children to shrink */
             .row, .workspace, .workspace-main, .workspace-right { min-width: 0; }
           </style>
-      
+
           <div class="doc-grid" id="docGrid">
             <!-- LEFT SIDEBAR -->
             <aside class="doc-side" id="docSide">
-              <!-- IMPORTANT: toggle button is OUTSIDE inner -->
-              <button class="doc-toggle" id="docToggle" type="button" aria-label="Collapse document panel" title="Collapse">
-                ◀
-              </button>
+              <button class="doc-toggle" id="docToggle" type="button" aria-label="Collapse document panel" title="Collapse">◀</button>
 
               <div class="doc-side-inner">
+                <div class="doc-sec">
+                  <div class="doc-sec-title">Candidate</div>
 
-              <div class="doc-sec">
-                <div class="doc-sec-title">Candidate</div>
+                  <div class="doc-kv">
+                    <div class="doc-k">Name</div>
+                    <div class="doc-v" id="docCandidate">—</div>
+                  </div>
 
-                <div class="doc-kv">
-                  <div class="doc-k">Name</div>
-                  <div class="doc-v" id="docCandidate">—</div>
-                </div>
+                  <div class="doc-kv">
+                    <div class="doc-k">Email</div>
+                    <div class="doc-v">
+                      <a id="docEmailLink" href="#" style="display:none;"></a>
+                      <span id="docEmail">—</span>
+                    </div>
+                  </div>
 
-                <div class="doc-kv">
-                  <div class="doc-k">Email</div>
-                  <div class="doc-v">
-                    <a id="docEmailLink" href="#" style="display:none;"></a>
-                    <span id="docEmail">—</span>
+                  <div class="doc-kv">
+                    <div class="doc-k">LinkedIn</div>
+                    <div class="doc-v">
+                      <a id="docLinkedIn" href="#" target="_blank" rel="noreferrer" style="display:none;">Open</a>
+                      <span id="docLinkedInNone">—</span>
+                    </div>
+                  </div>
+
+                  <div class="doc-kv">
+                    <div class="doc-k">GitHub</div>
+                    <div class="doc-v">
+                      <a id="docGitHub" href="#" target="_blank" rel="noreferrer" style="display:none;">Open</a>
+                      <span id="docGitHubNone">—</span>
+                    </div>
+                  </div>
+
+                  <div class="doc-kv">
+                    <div class="doc-k">Location</div>
+                    <div class="doc-v" id="docLocation">—</div>
                   </div>
                 </div>
 
-                <div class="doc-kv">
-                  <div class="doc-k">LinkedIn</div>
-                  <div class="doc-v"><a id="docLinkedIn" href="#" target="_blank" rel="noreferrer" style="display:none;">Open</a><span id="docLinkedInNone">—</span></div>
-                </div>
+                <div class="doc-sec">
+                  <div class="doc-sec-title">Trust</div>
 
-                <div class="doc-kv">
-                  <div class="doc-k">GitHub</div>
-                  <div class="doc-v"><a id="docGitHub" href="#" target="_blank" rel="noreferrer" style="display:none;">Open</a><span id="docGitHubNone">—</span></div>
-                </div>
+                  <div class="doc-kv">
+                    <div class="doc-k">Trust score</div>
+                    <div class="doc-v" id="docTrustScore">—</div>
+                  </div>
 
-                <div class="doc-kv">
-                  <div class="doc-k">Location</div>
-                  <div class="doc-v" id="docLocation">—</div>
-                </div>
-              </div>
+                  <div class="doc-kv">
+                    <div class="doc-k">Bucket</div>
+                    <div class="doc-v" id="docBucket">—</div>
+                  </div>
 
-              <div class="doc-sec">
-                <div class="doc-sec-title">Trust</div>
-
-                <div class="doc-kv">
-                  <div class="doc-k">Trust score</div>
-                  <div class="doc-v" id="docTrustScore">—</div>
+                  <div class="doc-kv">
+                    <div class="doc-k">Report created</div>
+                    <div class="doc-v" id="docUploaded">—</div>
+                  </div>
                 </div>
-
-                <div class="doc-kv">
-                  <div class="doc-k">Bucket</div>
-                  <div class="doc-v" id="docBucket">—</div>
-                </div>
-
-                <div class="doc-kv">
-                  <div class="doc-k">Report created</div>
-                  <div class="doc-v" id="docUploaded">—</div>
-                </div>
-              </div>
               </div>
             </aside>
 
@@ -372,21 +317,21 @@ export async function renderTrustReportPage(request, env) {
           <div class="fine" style="margin-top:6px;">Upload via Trust Home PDF picker to store it.</div>
         </div>
       `,
-    
-      // RIGHT PANE (Risk & Signals)
-      // Your existing Trust Report markup is untouched; we just wrap it in the workspace right pane.
-      body: `
-        <div class="rt-wrap">
-          <div class="row" style="margin-top:2px;">
-          ${profileId
-            ? `<a class="btn btn-ghost" href="/trust/profile?id=${escapeHtml(profileId)}">← Back to Profile</a>`
-            : `<span class="fine">Missing profile id</span>`
+
+    // RIGHT PANE (Risk & Signals)
+    body: `
+      <div class="rt-wrap">
+        <div class="row" style="margin-top:2px;">
+          ${
+            profileId
+              ? `<a class="btn btn-ghost" href="/trust/profile?id=${escapeHtml(profileId)}">← Back to Profile</a>`
+              : `<span class="fine">Missing profile id</span>`
           }
-            <span class="spacer"></span>
-            <button class="btn" id="refresh" type="button">Refresh</button>
-          </div>
-      
-          <div class="card" style="margin-top:12px;">
+          <span class="spacer"></span>
+          <button class="btn" id="refresh" type="button">Refresh</button>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
           <div class="row" style="align-items:flex-end; gap:10px;">
             <div>
               <div class="fine">Trust Report</div>
@@ -396,954 +341,619 @@ export async function renderTrustReportPage(request, env) {
             <span class="spacer"></span>
 
             <div class="row" style="gap:10px; align-items:center;">
-              <div class="row" style="gap:10px; align-items:center;">
               <div id="bucketMini"></div>
-                <div class="fine" id="scoreMini" style="opacity:.75;">—</div>
+              <div class="fine" id="scoreMini" style="opacity:.75;">—</div>
+            </div>
+          </div>
+
+          <div class="divider" style="margin-top:12px;"></div>
+
+          <!-- Tabs styled like screenshot #2 (not pill buttons) -->
+          <style>
+            /* --- Modal (fix: ensure it overlays, never inline) --- */
+            .modal-backdrop{
+              position: fixed;
+              inset: 0;
+              background: rgba(11,18,32,.45);
+              display: none;
+              align-items: center;
+              justify-content: center;
+              z-index: 9999;
+              padding: 18px;
+            }
+            .modal-backdrop.open{ display:flex; }
+
+            .modal-card{
+              width: min(980px, 96vw);
+              max-height: 86vh;
+              overflow: auto;
+              border-radius: 18px;
+              background: rgba(255,255,255,.96);
+              border: 1px solid rgba(11,18,32,.12);
+              box-shadow: 0 18px 55px rgba(11,18,32,.22);
+              backdrop-filter: blur(8px);
+            }
+            .modal-head{
+              position: sticky;
+              top: 0;
+              background: rgba(246,251,251,.85);
+              backdrop-filter: blur(8px);
+              border-bottom: 1px solid rgba(11,18,32,.10);
+              padding: 12px 14px;
+              display:flex;
+              align-items:center;
+              gap: 10px;
+              z-index: 2;
+            }
+            .modal-title{ font-weight: 1000; letter-spacing:.2px; }
+            .modal-body{ padding: 14px; }
+
+            .codebox{
+              white-space: pre-wrap;
+              background: rgba(11,18,32,.04);
+              border: 1px solid var(--border);
+              border-radius: 14px;
+              padding: 12px;
+              overflow: auto;
+            }
+            .rt-wrap{ min-width:0; width:100%; overflow:hidden; }
+            .rt-wrap *{ min-width:0; }
+
+            .rt-tabs2{
+              display:flex;
+              gap: 18px;
+              border-bottom: 1px solid rgba(11,18,32,.10);
+              margin-top: 10px;
+              padding-bottom: 6px;
+            }
+            .rt-tab2{
+              appearance:none;
+              border:0;
+              background:transparent;
+              padding: 8px 2px;
+              font-weight: 800;
+              font-size: 13px;
+              color: rgba(11,18,32,.58);
+              cursor: pointer;
+              position: relative;
+            }
+            .rt-tab2.active{
+              color: rgba(11,18,32,.88);
+            }
+            .rt-tab2.active::after{
+              content:"";
+              position:absolute;
+              left:0;
+              right:0;
+              bottom:-7px;
+              height:2px;
+              border-radius: 999px;
+              background: rgba(0,170,170,.70);
+            }
+
+            .rt-panel{ margin-top: 12px; }
+            .rt-panel[hidden]{ display:none; }
+
+            .riskbar{
+              height: 8px;
+              border-radius: 999px;
+              background: rgba(11,18,32,.06);
+              overflow:hidden;
+              border: 1px solid rgba(11,18,32,.06);
+            }
+            .riskbar > div{
+              height: 100%;
+              width: 0%;
+              background: rgba(180,35,24,.55);
+            }
+
+            /* Summary (like screenshot #2) */
+            .sum-head{
+              display:flex;
+              align-items:center;
+              justify-content:space-between;
+              gap:10px;
+            }
+            .sum-title{
+              font-weight: 950;
+              font-size: 16px;
+              color: rgba(11,18,32,.90);
+            }
+            .sum-right{
+              display:flex;
+              align-items:center;
+              gap:10px;
+            }
+            .sum-score{
+              font-weight: 850;
+              font-size: 13px;
+              color: rgba(11,18,32,.65);
+            }
+
+            /* Insights list (accordion rows) */
+            #panelAnalysis, #insights{ min-width:0; width:100%; overflow:hidden; }
+            .insight-list{ display:flex; flex-direction:column; gap:8px; }
+
+            .insight-row{
+              display:flex;
+              align-items:center;
+              justify-content:space-between;
+              gap:10px;
+              padding:10px 12px;
+              border:1px solid var(--border);
+              border-radius:14px;
+              background: rgba(255,255,255,.92);
+              box-shadow: 0 8px 20px rgba(11,18,32,.05);
+              cursor:pointer;
+              width:100%;
+              min-width:0;
+              box-sizing:border-box;
+            }
+            .insight-left{ display:flex; align-items:center; gap:10px; min-width:0; }
+            .insight-icon{
+              width:22px; height:22px; border-radius:999px;
+              display:flex; align-items:center; justify-content:center;
+              font-weight:900; flex:0 0 auto;
+              border: 1px solid rgba(180,35,24,.25);
+              background: rgba(180,35,24,.10);
+              color: #b42318;
+            }
+            .insight-icon.sevA{ border-color: rgba(180,35,24,.25); background: rgba(180,35,24,.10); color:#b42318; }
+            .insight-icon.sevB{ border-color: rgba(245,158,11,.30); background: rgba(245,158,11,.12); color:#8a5a00; }
+            .insight-icon.sevC{ border-color: rgba(12,122,75,.25); background: rgba(12,122,75,.10); color:#0c7a4b; }
+
+            .insight-title{ font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%; }
+            .insight-sub{ color: rgba(11,18,32,.60); font-size:12px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%; }
+
+            .insight-right{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+            .chev{
+              width: 18px;
+              text-align:center;
+              opacity:.6;
+              transition: transform .12s ease, opacity .12s ease;
+              font-weight: 900;
+            }
+            .insight-row.open .chev{ transform: rotate(180deg); opacity:.85; }
+
+            .insight-details{
+              display:none;
+              margin-top:8px;
+              padding:10px 12px;
+              border-radius:14px;
+              border:1px solid var(--border);
+              background: rgba(11,18,32,.03);
+            }
+            .insight-row.open + .insight-details{ display:block; }
+
+            /* Footer row like screenshot #2 */
+            .insights-footer{
+              display:flex;
+              align-items:center;
+              justify-content:space-between;
+              gap:10px;
+              padding-top: 10px;
+            }
+            .linklike{
+              border:0;
+              background:transparent;
+              font-weight:900;
+              cursor:pointer;
+              padding: 8px 0;
+              color: rgba(11,18,32,.86);
+            }
+            .mutedmeta{ color: rgba(11,18,32,.55); font-weight:700; font-size:12px; }
+          </style>
+
+          <div class="rt-tabs2" role="tablist" aria-label="Report tabs">
+            <button class="rt-tab2 active" id="tabAnalysis" type="button" role="tab" aria-selected="true">Analysis</button>
+            <button class="rt-tab2" id="tabDetails" type="button" role="tab" aria-selected="false">Details</button>
+          </div>
+
+          <div class="rt-panel" id="panelAnalysis" role="tabpanel">
+            <!-- Summary card (single summary; AI summary stays inside) -->
+            <div class="card" style="margin-top:12px;">
+              <div class="sum-head">
+                <div>
+                  <div class="fine">Summary</div>
+                  <div class="sum-title" id="summaryTitle" style="margin-top:6px;">Summary</div>
+                </div>
+                <div class="sum-right">
+                  <div id="summaryBadge"></div>
+                  <div class="sum-score" id="summaryScore">—</div>
+                </div>
+              </div>
+
+              <div style="margin-top:12px;">
+                <div class="row" style="align-items:center;">
+                  <div class="fine" id="riskLabel">Risk</div>
+                  <span class="spacer"></span>
+                  <div class="fine" id="riskNumber">—</div>
+                </div>
+                <div class="riskbar" style="margin-top:6px;">
+                  <div id="riskFill"></div>
+                </div>
+              </div>
+
+              <div class="rt-summary-text" id="narrative" style="margin-top:10px; color:rgba(11,18,32,.70); line-height:1.45;"></div>
+
+              <!-- Keep AI Summary, but inside the same Summary card -->
+              <div class="divider" style="margin-top:12px;"></div>
+              <div class="fine">AI Summary</div>
+              <div id="aiSummaryText" style="margin-top:8px; line-height:1.5; color:rgba(11,18,32,.72);">
+                <span class="fine">(loading…)</span>
               </div>
             </div>
-          </div>
 
-          <div style="margin-top:10px;">
-            <div class="row" style="align-items:center;">
-              <div class="fine" id="riskLabel">Risk</div>
-              <span class="spacer"></span>
-              <div class="fine" id="riskNumber">—</div>
-            </div>
-            <div class="riskbar" style="margin-top:6px;">
-              <div id="riskFill"></div>
-            </div>
-          </div>
+            <!-- Insights moved BELOW AI summary -->
+            <div class="card" style="margin-top:12px;">
+              <div class="row" style="align-items:center; gap:10px;">
+                <div class="fine" style="font-weight:700;">Insights</div>
+                <span class="pill" id="insightCountPill" style="background:rgba(11,18,32,.06); border-color:var(--border); color:rgba(11,18,32,.72);">—</span>
+                <span class="spacer"></span>
+                <button class="btn btn-ghost" id="btnToggleInsights" type="button" aria-expanded="true">Collapse</button>
+              </div>
 
-          <div class="fine" id="narrative" style="margin-top:8px;"></div>
-            <div style="margin-top:10px;">
-              <button class="btn btn-ghost" id="btnExtracted" type="button" style="display:none;">
-                View extracted timeline
-              </button>
+              <div class="divider"></div>
+
+              <div id="insightsWrap">
+                <div id="insights" class="insight-list">
+                  <div class="fine">Loading insights…</div>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="insights-footer">
+                  <button class="linklike" id="btnFullAnalysis" type="button" disabled>View Full Analysis</button>
+                  <div class="mutedmeta" id="checkedCount"></div>
+                </div>
+              </div>
             </div>
-      
-            <div class="card" id="extractedPanel" style="margin-top:12px; display:none;">
-              <div class="fine">Extracted timeline and details</div>
-      
-              <div id="exCandidate" style="margin-top:10px;"></div>
-      
-              <div class="divider"></div>
-      
-              <div class="fine">Experience timeline</div>
-              <div id="exRoles" style="margin-top:8px;"></div>
-      
-              <div class="divider"></div>
-      
-              <div class="fine">Skills</div>
-              <div id="exSkills" style="margin-top:8px;"></div>
-      
-              <div class="divider"></div>
-      
-              <div class="fine">Education</div>
-              <div id="exEducation" style="margin-top:8px;"></div>
-      
-              <div class="divider"></div>
-      
-              <details>
-                <summary class="fine">Show raw extracted JSON</summary>
-                <pre id="exRaw"
-                  style="white-space:pre-wrap; background:rgba(11,18,32,.04);
-                  border:1px solid var(--border); border-radius:14px; padding:10px;
-                  overflow:auto; margin-top:10px;"></pre>
-              </details>
-            </div>
-      
-            <div class="divider"></div>
-      
-            <div class="row" style="gap:10px; align-items:center; flex-wrap:wrap;">
-              <div id="summary" class="row" style="gap:10px; flex-wrap:wrap;"></div>
-              <span class="spacer"></span>
-      
-              <button class="btn btn-ghost" id="btnCopySummary" type="button" disabled>
-                Copy recruiter summary
-              </button>
-      
-              <button class="btn btn-ghost" id="btnCopyQuestions" type="button" disabled>
-                Copy interview questions
-              </button>
-      
+
+            <!-- Copy actions (kept, but moved BELOW Insights, and no duplicate “selected block”) -->
+            <div class="row" style="gap:10px; align-items:center; flex-wrap:wrap; margin-top:12px;">
+              <button class="btn btn-ghost" id="btnCopySummary" type="button" disabled>Copy recruiter summary</button>
+              <button class="btn btn-ghost" id="btnCopyQuestions" type="button" disabled>Copy interview questions</button>
               <span class="fine" id="copyToast" style="display:none;"></span>
             </div>
-            
+          </div>
+
+          <div class="rt-panel" id="panelDetails" role="tabpanel" hidden>
             <div class="divider"></div>
+            <div class="fine">Details</div>
 
-            <div class="card" id="aiSummaryCard" style="display:none; margin-top:12px;">
-              <div class="fine">AI Summary</div>
-              <div id="aiSummaryText" style="margin-top:8px; line-height:1.45;"></div>
-            </div>
-      
-            <div class="divider"></div>
-      
-            <style>
-            /* Right panel must be allowed to shrink + must clip overflow */
-              .rt-wrap{
-                min-width: 0;
-                width: 100%;
-                overflow: hidden;
-              }
-
-              /* Any nested flex/grid children should also be shrinkable */
-              .rt-wrap *{
-                min-width: 0;
-              }
-
-              /* The insights container must never exceed the card */
-              #panelAnalysis, #insights{
-                min-width: 0;
-                width: 100%;
-                overflow: hidden;
-              }
-
-              /* Rows should not push layout wider */
-              .insight-row{
-                width: 100%;
-                min-width: 0;
-                box-sizing: border-box;
-              }
-
-              /* Remove hard max-widths that can cause weird overflow */
-              .insight-title, .insight-sub{
-                max-width: 100% !important;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-              }
-              .rt-tabs{ display:flex; gap:8px; margin-top:12px; }
-              .rt-tab{
-                border: 1px solid var(--border);
-                background: rgba(11,18,32,.03);
-                color: rgba(11,18,32,.78);
-                padding: 6px 10px;
-                border-radius: 999px;
-                font-weight: 900;
-                font-size: 12px;
-                cursor: pointer;
-              }
-              .rt-tab.active{
-                background: rgba(0,170,170,.14);
-                border-color: rgba(0,170,170,.35);
-                color: rgba(0,120,120,1);
-              }
-              .rt-panel{ margin-top: 12px; }
-              .rt-panel[hidden]{ display:none; }
-
-              .riskbar{
-                height: 8px;
-                border-radius: 999px;
-                background: rgba(11,18,32,.06);
-                overflow:hidden;
-                border: 1px solid rgba(11,18,32,.06);
-              }
-              .riskbar > div{
-                height: 100%;
-                width: 0%;
-                background: rgba(180,35,24,.55); /* will override in JS */
-              }
-
-              /* Modal */
-              .modal-backdrop{
-                position: fixed;
-                inset: 0;
-                background: rgba(11,18,32,.45);
-                display:none;
-                align-items:center;
-                justify-content:center;
-                z-index: 9999;
-                padding: 18px;
-              }
-              .modal-backdrop.open{ display:flex; }
-              .modal-card{
-                width: min(980px, 96vw);
-                max-height: 86vh;
-                overflow:auto;
-                border-radius: 18px;
-                background: rgba(255,255,255,.96);
-                border: 1px solid rgba(11,18,32,.12);
-                box-shadow: 0 18px 55px rgba(11,18,32,.22);
-                backdrop-filter: blur(8px);
-              }
-              .modal-head{
-                position: sticky;
-                top: 0;
-                background: rgba(246,251,251,.85);
-                backdrop-filter: blur(8px);
-                border-bottom: 1px solid rgba(11,18,32,.10);
-                padding: 12px 14px;
-                display:flex;
-                align-items:center;
-                gap: 10px;
-                z-index: 2;
-              }
-              .modal-title{ font-weight: 1000; letter-spacing:.2px; }
-              .modal-body{ padding: 14px; }
-              .codebox{
-                white-space: pre-wrap;
-                background: rgba(11,18,32,.04);
-                border: 1px solid var(--border);
-                border-radius: 14px;
-                padding: 12px;
-                overflow:auto;
-              }
-              /* Smaller enterprise pills + buttons (local overrides) */
-              .pill{
-                padding:4px 8px;
-                font-size:11px;
-                font-weight:900;
-                letter-spacing:.02em;
-              }
-
-              .btn.btn-ghost, .btn.btn-primary, .btn.btn-sm, .btn{
-                font-size:12px;
-              }
-
-              .btn.btn-ghost{
-                padding:6px 10px;
-                border-radius:10px;
-              }
-
-              .btn.btn-primary{
-                padding:7px 12px;
-                border-radius:10px;
-              }
-              .collapse-btn{
-                width:28px;
-                text-align:center;
-                padding:4px;
-              }
-              /* Compact insight rows like the reference screenshot */
-              .insight-list{
-                display:flex;
-                flex-direction:column;
-                gap:8px;
-              }
-
-              .insight-row{
-                display:flex;
-                align-items:center;
-                justify-content:space-between;
-                gap:10px;
-                padding:10px 12px;
-                border:1px solid var(--border);
-                border-radius:14px;
-                background: rgba(255,255,255,.92);
-                box-shadow: 0 8px 20px rgba(11,18,32,.05);
-                cursor:pointer;
-              }
-
-              .insight-left{
-                display:flex;
-                align-items:center;
-                gap:10px;
-                min-width:0;
-              }
-
-              .insight-icon{
-                width:22px;
-                height:22px;
-                border-radius:999px;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                font-weight:900;
-                border: 1px solid rgba(180,35,24,.25);
-                background: rgba(180,35,24,.10);
-                color: #b42318;
-                flex: 0 0 auto;
-              }
-
-              .insight-title{
-                font-weight:900;
-                white-space:nowrap;
-                overflow:hidden;
-                text-overflow:ellipsis;
-                width: 100%;
-              }
-
-              .insight-sub{
-                color: rgba(11,18,32,.60);
-                font-size:12px;
-                margin-top:2px;
-                white-space:nowrap;
-                overflow:hidden;
-                text-overflow:ellipsis;
-                width: 100%;
-              }
-
-              .insight-right{
-                display:flex;
-                align-items:center;
-                gap:8px;
-                flex: 0 0 auto;
-              }
-
-              .kebab{
-                width:28px;
-                height:28px;
-                border-radius:10px;
-                border:1px solid var(--border);
-                background: rgba(11,18,32,.03);
-                font-weight:900;
-              }
-
-              .insight-details{
-                margin-top:8px;
-                padding:10px 12px;
-                border-radius:14px;
-                border:1px solid var(--border);
-                background: rgba(11,18,32,.03);
-              }
-            </style>
-
-            <div class="rt-tabs" role="tablist" aria-label="Report tabs">
-              <button class="rt-tab active" id="tabAnalysis" type="button" role="tab" aria-selected="true">Analysis</button>
-              <button class="rt-tab" id="tabDetails" type="button" role="tab" aria-selected="false">Details</button>
-            </div>
-
-            <div class="rt-panel" id="panelAnalysis" role="tabpanel">
-              <div class="divider"></div>
-
-              <div class="fine" style="margin-bottom:8px;">Insights</div>
-              <div style="display:grid; grid-template-columns:1fr; gap:10px;" id="insights">
-                <div class="fine">Loading insights…</div>
+            <div style="display:grid; grid-template-columns:1fr; gap:10px; margin-top:10px;">
+              <div class="card">
+                <div class="fine">Engine</div>
+                <div style="font-weight:900; margin-top:6px;" id="dEngine">—</div>
+                <div class="fine" style="margin-top:6px;" id="dExtraction">—</div>
               </div>
 
-              <div class="divider"></div>
+              <details class="card">
+                <summary class="fine">Show raw report JSON</summary>
+                <pre class="codebox" id="dReportJson" style="margin-top:10px; white-space:pre-wrap; background:rgba(11,18,32,.04); border:1px solid var(--border); border-radius:14px; padding:12px; overflow:auto;"></pre>
+              </details>
 
-              <div class="row" style="gap:10px; align-items:center;">
-                <button class="btn btn-ghost" id="btnFullAnalysis" type="button" disabled>View Full Analysis</button>
-                <span class="fine" id="fullAnalysisHint"></span>
+              <details class="card">
+                <summary class="fine">Show raw insights JSON</summary>
+                <pre class="codebox" id="dSignalsJson" style="margin-top:10px; white-space:pre-wrap; background:rgba(11,18,32,.04); border:1px solid var(--border); border-radius:14px; padding:12px; overflow:auto;"></pre>
+              </details>
+            </div>
+          </div>
+
+          <!-- Full Analysis Modal -->
+          <div class="modal-backdrop" id="analysisModal" aria-hidden="true">
+            <div class="modal-card">
+              <div class="modal-head">
+                <div class="modal-title">Full Analysis</div>
                 <span class="spacer"></span>
-                <span class="fine" id="checkedCount"></span>
+                <button class="btn btn-ghost" id="btnCloseModal" type="button">Close</button>
+              </div>
+              <div class="modal-body">
+                <div class="fine">Report</div>
+                <pre class="codebox" id="mReport" style="margin-top:8px; white-space:pre-wrap; background:rgba(11,18,32,.04); border:1px solid var(--border); border-radius:14px; padding:12px; overflow:auto;"></pre>
+
+                <div class="divider"></div>
+
+                <div class="fine">Insights</div>
+                <pre class="codebox" id="mSignals" style="margin-top:8px; white-space:pre-wrap; background:rgba(11,18,32,.04); border:1px solid var(--border); border-radius:14px; padding:12px; overflow:auto;"></pre>
+
+                <div class="divider"></div>
+
+                <div class="fine">Evaluation (LLM meta)</div>
+                <pre class="codebox" id="mEval" style="margin-top:8px; white-space:pre-wrap; background:rgba(11,18,32,.04); border:1px solid var(--border); border-radius:14px; padding:12px; overflow:auto;">(loading…)</pre>
+
+                <div class="divider"></div>
+
+                <div class="fine">Normalized profile snapshot</div>
+                <pre class="codebox" id="mNorm" style="margin-top:8px; white-space:pre-wrap; background:rgba(11,18,32,.04); border:1px solid var(--border); border-radius:14px; padding:12px; overflow:auto;">(loading…)</pre>
               </div>
             </div>
+          </div>
+        </div>
 
-            <div class="rt-panel" id="panelDetails" role="tabpanel" hidden>
-              <div class="divider"></div>
-              <div class="fine">Details</div>
+        <script>
+          const reportId = ${JSON.stringify(id)};
+          let __lastReport = null;
+          let __lastSignals = [];
 
-              <div style="display:grid; grid-template-columns:1fr; gap:10px; margin-top:10px;">
-                <div class="card">
-                  <div class="fine">Engine</div>
-                  <div style="font-weight:900; margin-top:6px;" id="dEngine">—</div>
-                  <div class="fine" style="margin-top:6px;" id="dExtraction">—</div>
-                </div>
+          function pickFirst(...vals) {
+            for (const v of vals) {
+              if (typeof v === "string" && v.trim()) return v.trim();
+            }
+            return "";
+          }
 
-                <details class="card">
-                  <summary class="fine">Show raw report JSON</summary>
-                  <pre class="codebox" id="dReportJson" style="margin-top:10px;"></pre>
-                </details>
+          function esc(s) {
+            return String(s || "")
+              .replaceAll("&", "&amp;")
+              .replaceAll("<", "&lt;")
+              .replaceAll(">", "&gt;")
+              .replaceAll('"', "&quot;")
+              .replaceAll("'", "&#039;");
+          }
 
-                <details class="card">
-                  <summary class="fine">Show raw insights JSON</summary>
-                  <pre class="codebox" id="dSignalsJson" style="margin-top:10px;"></pre>
-                </details>
-              </div>
-            </div>
+          function pill(text, bg, bd, ink) {
+            return '<span class="pill" style="background:' + bg + '; border-color:' + bd + '; color:' + ink + ';">' + text + '</span>';
+          }
 
-            <!-- Full Analysis Modal -->
-            <div class="modal-backdrop" id="analysisModal" aria-hidden="true">
-              <div class="modal-card">
-                <div class="modal-head">
-                  <div class="modal-title">Full Analysis</div>
-                  <span class="spacer"></span>
-                  <button class="btn btn-ghost" id="btnCloseModal" type="button">Close</button>
-                </div>
-                <div class="modal-body">
-                  <div class="fine">Report</div>
-                  <pre class="codebox" id="mReport" style="margin-top:8px;"></pre>
+          function bucketBadge(bucket) {
+            const b = String(bucket || "unknown");
+            if (b === "green") return pill("Green", "rgba(12,122,75,.10)", "rgba(12,122,75,.25)", "#0c7a4b");
+            if (b === "yellow") return pill("Yellow", "rgba(245,158,11,.12)", "rgba(245,158,11,.28)", "#8a5a00");
+            if (b === "red") return pill("Red", "rgba(180,35,24,.10)", "rgba(180,35,24,.25)", "#b42318");
+            return pill(b, "rgba(11,18,32,.06)", "var(--border)", "var(--muted)");
+          }
 
-                  <div class="divider"></div>
+          function severityTag(tier) {
+            const t = String(tier || "");
+            if (t === "A") return pill("Tier A", "rgba(180,35,24,.08)", "rgba(180,35,24,.22)", "#b42318");
+            if (t === "B") return pill("Tier B", "rgba(245,158,11,.10)", "rgba(245,158,11,.26)", "#8a5a00");
+            return pill("Tier C", "rgba(11,18,32,.06)", "var(--border)", "var(--muted)");
+          }
 
-                  <div class="fine">Insights</div>
-                  <pre class="codebox" id="mSignals" style="margin-top:8px;"></pre>
+          async function readJson(res) {
+            const ct = res.headers.get("content-type") || "";
+            if (ct.includes("application/json")) return await res.json();
+            return { error: await res.text() };
+          }
 
-                  <div class="divider"></div>
+          function setEmail(email) {
+            const a = document.getElementById("docEmailLink");
+            const s = document.getElementById("docEmail");
+            const e = String(email || "").trim();
+            if (!a || !s) return;
 
-                  <div class="fine">Evaluation (LLM meta)</div>
-                  <pre class="codebox" id="mEval" style="margin-top:8px;">(loading…)</pre>
+            if (e) {
+              a.href = "mailto:" + e;
+              a.textContent = e;
+              a.style.display = "inline";
+              a.style.textDecoration = "none";
+              a.style.color = "rgba(0,120,120,1)";
+              s.style.display = "none";
+            } else {
+              a.style.display = "none";
+              s.style.display = "inline";
+              s.textContent = "—";
+            }
+          }
 
-                  <div class="divider"></div>
+          function prettyUrl(u) {
+            const s = String(u || "").trim();
+            if (!s) return "";
+            try {
+              const x = new URL(s);
+              let out = x.hostname + x.pathname;
+              if (out.endsWith("/")) out = out.slice(0, -1);
+              if (out.length > 28) return out.slice(0, 28) + "...";
+              return out;
+            } catch (e) {
+              if (s.length > 28) return s.slice(0, 28) + "...";
+              return s;
+            }
+          }
 
-                  <div class="fine">Normalized profile snapshot</div>
-                  <pre class="codebox" id="mNorm" style="margin-top:8px;">(loading…)</pre>
-                </div>
-              </div>
-            </div>
-      
-          <script>
-            const reportId = ${JSON.stringify(id)};
-            let __lastReport = null;
-            let __lastSignals = [];
-            function pickFirst(...vals) {
-              for (const v of vals) {
-                if (typeof v === "string" && v.trim()) return v.trim();
-              }
-              return "";
+          function setLink(anchorId, noneId, url) {
+            const a = document.getElementById(anchorId);
+            const n = document.getElementById(noneId);
+            const u = String(url || "").trim();
+            if (!a || !n) return;
+
+            if (u) {
+              const href = (u.startsWith("http://") || u.startsWith("https://")) ? u : ("https://" + u);
+              a.href = href;
+              a.textContent = prettyUrl(href);
+              a.style.display = "inline";
+              a.style.fontWeight = "650";
+              a.style.color = "rgba(0,120,120,1)";
+              a.style.textDecoration = "none";
+              n.style.display = "none";
+            } else {
+              a.style.display = "none";
+              n.style.display = "inline";
+            }
+          }
+
+          // --- Document sidebar collapse ---
+          (function initDocSidebar() {
+            const grid = document.getElementById("docGrid");
+            const btn = document.getElementById("docToggle");
+            if (!grid || !btn) return;
+
+            const KEY = "st_doc_sidebar_collapsed";
+            const saved = localStorage.getItem(KEY);
+            if (saved === "1") grid.classList.add("collapsed");
+
+            function syncIcon() {
+              const isCollapsed = grid.classList.contains("collapsed");
+              btn.textContent = isCollapsed ? "▶" : "◀";
+              btn.title = isCollapsed ? "Expand" : "Collapse";
+              btn.setAttribute("aria-label", isCollapsed ? "Expand document panel" : "Collapse document panel");
             }
 
-            function prettyUrl(u) {
-              const s = String(u || "").trim();
-              if (!s) return "";
-
-              try {
-                const x = new URL(s);
-
-                let out = x.hostname + x.pathname;
-                if (out.endsWith("/")) out = out.slice(0, -1);
-
-                if (out.length > 28) return out.slice(0, 28) + "...";
-                return out;
-
-              } catch (e) {
-                if (s.length > 28) return s.slice(0, 28) + "...";
-                return s;
-              }
-            }
-
-            function setLink(anchorId, noneId, url) {
-              const a = document.getElementById(anchorId);
-              const n = document.getElementById(noneId);
-              const u = String(url || "").trim();
-              if (!a || !n) return;
-
-              if (u) {
-                // normalize missing scheme
-                const href = (u.startsWith("http://") || u.startsWith("https://")) ? u : ("https://" + u);
-
-                a.href = href;
-                a.textContent = prettyUrl(href);
-                a.style.display = "inline";
-                a.style.fontWeight = "650";
-                a.style.color = "rgba(0,120,120,1)";
-                a.style.textDecoration = "none";
-
-                n.style.display = "none";
-              } else {
-                a.style.display = "none";
-                n.style.display = "inline";
-              }
-            }
-            // --- Document sidebar collapse ---
-            (function initDocSidebar() {
-              const grid = document.getElementById("docGrid");
-              const btn = document.getElementById("docToggle");
-              if (!grid || !btn) return;
-
-              const KEY = "st_doc_sidebar_collapsed";
-              const saved = localStorage.getItem(KEY);
-              if (saved === "1") grid.classList.add("collapsed");
-
-              function syncIcon() {
-                const isCollapsed = grid.classList.contains("collapsed");
-                btn.textContent = isCollapsed ? "▶" : "◀";
-                btn.title = isCollapsed ? "Expand" : "Collapse";
-                btn.setAttribute("aria-label", isCollapsed ? "Expand document panel" : "Collapse document panel");
-              }
-
-              btn.addEventListener("click", () => {
-                grid.classList.toggle("collapsed");
-                localStorage.setItem(KEY, grid.classList.contains("collapsed") ? "1" : "0");
-                syncIcon();
-              });
-
+            btn.addEventListener("click", () => {
+              grid.classList.toggle("collapsed");
+              localStorage.setItem(KEY, grid.classList.contains("collapsed") ? "1" : "0");
               syncIcon();
-            })();
-            function esc(s) {
-              return String(s || "")
-                .replaceAll("&", "&amp;")
-                .replaceAll("<", "&lt;")
-                .replaceAll(">", "&gt;")
-                .replaceAll('"', "&quot;")
-                .replaceAll("'", "&#039;");
-            }
-      
-            function pill(text, bg, bd, ink) {
-              return '<span class="pill" style="background:' + bg + '; border-color:' + bd + '; color:' + ink + ';">' + text + '</span>';
-            }
-      
-            async function readJson(res) {
-              const ct = res.headers.get("content-type") || "";
-              if (ct.includes("application/json")) return await res.json();
-              return { error: await res.text() };
-            }
-      
-            function bucketBadge(bucket) {
-              const b = String(bucket || "unknown");
-              if (b === "green") return pill("Green", "rgba(12,122,75,.10)", "rgba(12,122,75,.25)", "#0c7a4b");
-              if (b === "yellow") return pill("Yellow", "rgba(245,158,11,.12)", "rgba(245,158,11,.28)", "#8a5a00");
-              if (b === "red") return pill("Red", "rgba(180,35,24,.10)", "rgba(180,35,24,.25)", "#b42318");
-              return pill(b, "rgba(11,18,32,.06)", "var(--border)", "var(--muted)");
-            }
-      
-            function severityTag(tier) {
-              const t = String(tier || "");
-              if (t === "A") return pill("Tier A", "rgba(180,35,24,.08)", "rgba(180,35,24,.22)", "#b42318");
-              if (t === "B") return pill("Tier B", "rgba(245,158,11,.10)", "rgba(245,158,11,.26)", "#8a5a00");
-              return pill("Tier C", "rgba(11,18,32,.06)", "var(--border)", "var(--muted)");
-            }
-      
-            function confTag(c) {
-              const x = String(c || "");
-              if (x === "high") return pill("High confidence", "rgba(12,122,75,.10)", "rgba(12,122,75,.25)", "#0c7a4b");
-              if (x === "medium") return pill("Medium confidence", "rgba(245,158,11,.10)", "rgba(245,158,11,.26)", "#8a5a00");
-              return pill("Low confidence", "rgba(11,18,32,.06)", "var(--border)", "var(--muted)");
-            }
-      
-            function signalRow(s, idx) {
-              const title = esc(s.title || s.signal_id);
-              const expl = esc(s.explanation || "");
-              const sev = s?.severity_tier ? s.severity_tier : "?";
-              const conf = String(s?.confidence || "low");
-              const ded = Number(s?.deduction || 0);
-              const dedLabel = ded === 0 ? "0" : (ded > 0 ? ("-" + ded) : ("+" + Math.abs(ded)));
-              const impact =
-                (sev === "A") ? "High risk" :
-                (sev === "B") ? "Moderate risk" :
-                "Low risk";
-
-              const confTxt =
-                (conf === "high") ? "High confidence" :
-                (conf === "medium") ? "Medium confidence" :
-                "Low confidence";
-
-              const meta = impact + " • " + confTxt;
-
-              // one-liner subtext: keep it short
-              function commercializeOneLiner(title, expl) {
-                const t = String(title || "").toLowerCase();
-                const e = String(expl || "");
-
-                // quick wins for your current signals
-                if (t.includes("gap")) return "Verify timeline; ask for context (career break, exam prep, notice period).";
-                if (t.includes("overlap")) return "Clarify concurrent roles to reduce hiring risk.";
-                if (t.includes("duplicate")) return "Confirm source consistency; potential copy/paste or reused content.";
-
-                // fallback: keep a trimmed expl
-                return e.length > 90 ? (e.slice(0, 90) + "…") : e;
-              }
-
-              const sub = commercializeOneLiner(title, expl);
-
-              return (
-                '<div>' +
-                  '<div class="insight-row" data-i="' + idx + '">' +
-                    '<div class="insight-left">' +
-                      '<div class="insight-icon">!</div>' +
-                      '<div style="min-width:0;">' +
-                        '<div class="insight-title">' + title + '</div>' +
-                        '<div class="insight-sub">' + esc(meta) + (sub ? (" — " + sub) : "") + '</div>' +
-                      '</div>' +
-                    '</div>' +
-                    '<div class="insight-right">' +
-                      severityTag(sev) +
-                      '<button class="kebab" type="button" title="More">⋯</button>' +
-                    '</div>' +
-                  '</div>' +
-
-                  '<div class="insight-details" id="insightDetail_' + idx + '" style="display:none;">' +
-                    (expl
-                      ? ('<div style="color:rgba(11,18,32,.75); line-height:1.5;">' + expl + '</div>')
-                      : ''
-                    ) +
-                    ((Array.isArray(s.suggested_questions) && s.suggested_questions.length)
-                      ? (
-                          '<div style="margin-top:10px;">' +
-                            '<div class="fine">Suggested questions</div>' +
-                            '<ul style="margin:8px 0 0; padding-left:18px;">' +
-                              s.suggested_questions.map(function(q){ return '<li>' + esc(q) + '</li>'; }).join('') +
-                            '</ul>' +
-                          '</div>'
-                        )
-                      : ''
-                    ) +
-                  '</div>' +
-                '</div>'
-              );
-            }
-      
-            async function copyToClipboard(text) {
-              try {
-                await navigator.clipboard.writeText(text);
-                return true;
-              } catch (e) {
-                try {
-                  const ta = document.createElement("textarea");
-                  ta.value = text;
-                  ta.style.position = "fixed";
-                  ta.style.opacity = "0";
-                  document.body.appendChild(ta);
-                  ta.focus();
-                  ta.select();
-                  const ok = document.execCommand("copy");
-                  document.body.removeChild(ta);
-                  return ok;
-                } catch {
-                  return false;
-                }
-              }
-            }
-      
-            function showToast(msg) {
-              const el = document.getElementById("copyToast");
-              if (!el) return;
-              el.textContent = msg;
-              el.style.display = "inline";
-              clearTimeout(window.__toastT);
-              window.__toastT = setTimeout(function () {
-                el.style.display = "none";
-              }, 1400);
-            }
-      
-            function buildInterviewQuestions(signals) {
-              const list = Array.isArray(signals) ? signals : [];
-              const seen = new Set();
-              const out = [];
-              const NL = String.fromCharCode(10);
-      
-              for (const s of list) {
-                const title = (s && (s.title || s.signal_id)) ? (s.title || s.signal_id) : "Signal";
-                const qs = Array.isArray(s && s.suggested_questions) ? s.suggested_questions : [];
-                const cleanQs = qs.map(function (q) { return String(q || "").trim(); }).filter(Boolean);
-                if (!cleanQs.length) continue;
-      
-                out.push("## " + title);
-                for (const q of cleanQs) {
-                  const key = q.toLowerCase();
-                  if (seen.has(key)) continue;
-                  seen.add(key);
-                  out.push("- " + q);
-                }
-                out.push("");
-              }
-      
-              return out.join(NL).trim();
-            }
-      
-            function buildRecruiterSummary(report, signals) {
-              const score = Number((report && report.trust_score) || 0);
-              const bucket = String((report && report.bucket) || "unknown").toUpperCase();
-              const hard = (report && report.hard_triggered) ? "YES" : "NO";
-      
-              const NL = String.fromCharCode(10);
-              const list = Array.isArray(signals) ? signals : [];
-      
-              const top = list.slice(0, 3).map(function (s) {
-                const title = (s && (s.title || s.signal_id)) ? (s.title || s.signal_id) : "Signal";
-                const sev = s?.severity_tier ? s.severity_tier : "?";
-                const ded = Number(s?.deduction || 0);
-                const dd = (ded === 0) ? "0" : (ded > 0 ? ("-" + ded) : ("+" + Math.abs(ded)));
-                return "- [Tier " + sev + "] " + title + " (" + dd + ")";
-              }).join(NL) || "- None";
-      
-              const questions = buildInterviewQuestions(signals);
-      
-              return [
-                "SignalTrust Summary",
-                "Score: " + score + " (" + bucket + ")",
-                "",
-                "Top risks:",
-                top,
-                "",
-                questions ? ("Interview questions:" + NL + questions) : ("Interview questions:" + NL + "- None"),
-              ].join(NL);
-            }
-      
-            async function load() {
-              const btnCopySummary = document.getElementById("btnCopySummary");
-              const btnCopyQuestions = document.getElementById("btnCopyQuestions");
-      
-              const ht = document.getElementById("headlineTitle");
-              if (ht) ht.textContent = "Loading…";
-              document.getElementById("insights").innerHTML = '<div class="fine">Loading...</div>';
-      
-              const res = await fetch("/api/trust/report?id=" + encodeURIComponent(reportId));
-              const data = await readJson(res);
-      
-              if (!res.ok) {
-                const ht2 = document.getElementById("headlineTitle");
-                if (ht2) ht2.textContent = "Failed to load";
-                const narrative = document.getElementById("narrative");
-                if (narrative) narrative.textContent = data.error || "Error";
-                document.getElementById("insights").innerHTML = "";
-                return;
-              }
-      
-              const report = data.report;
-              const signals = Array.isArray(data.signals) ? data.signals : [];
-
-              // Auto-generate AI Summary on load (optional: only if not already shown)
-              try {
-                const res2 = await fetch("/api/trust/ai-summary", {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ trust_report_id: reportId })
-                });
-                const j2 = await res2.json();
-
-                const card = document.getElementById("aiSummaryCard");
-                const text = document.getElementById("aiSummaryText");
-
-                if (res2.ok && card && text) {
-                  card.style.display = "block";
-                  const NL = String.fromCharCode(10);
-                  text.innerHTML = esc(j2.summary || "(No summary returned)").replaceAll(NL, "<br/>");
-                }
-              } catch (e) {
-                // ignore failures silently for now
-              }
-                  
-              __lastReport = report;
-              __lastSignals = signals;
-
-              // Details tab
-              document.getElementById("dEngine").textContent = String(report.engine_version || "—");
-              const dExtraction = document.getElementById("dExtraction");
-              if (dExtraction) {
-                dExtraction.textContent = "Created: " + (report.created_at || "—") +
-                  " • Bucket: " + (report.bucket || "—") +
-                  " • Hard: " + (report.hard_triggered ? "Yes" : "No");
-              }
-              document.getElementById("dReportJson").textContent = JSON.stringify(report, null, 2);
-              document.getElementById("dSignalsJson").textContent = JSON.stringify(signals, null, 2);
-
-              // Hook up Full Analysis button
-              const btnFull = document.getElementById("btnFullAnalysis");
-              if (btnFull) {
-                btnFull.disabled = false;
-                btnFull.onclick = async function () {
-                  // Fill modal basics
-                  document.getElementById("mReport").textContent = JSON.stringify(report, null, 2);
-                  document.getElementById("mSignals").textContent = JSON.stringify(signals, null, 2);
-
-                  // Load evaluation meta (optional)
-                  const evalId = report.trust_evaluation_id;
-                  const mEval = document.getElementById("mEval");
-                  const mNorm = document.getElementById("mNorm");
-
-                  if (!evalId) {
-                    if (mEval) mEval.textContent = "(no evaluation attached)";
-                    if (mNorm) mNorm.textContent = "(no evaluation attached)";
-                    openModal();
-                    return;
-                  }
-
-                  try {
-                    if (mEval) mEval.textContent = "(loading…)";
-                    if (mNorm) mNorm.textContent = "(loading…)";
-
-                    const r1 = await fetch("/api/trust/evaluation?id=" + encodeURIComponent(evalId));
-                    const j1 = await readJson(r1);
-                    if (r1.ok) {
-                      if (mEval) mEval.textContent = JSON.stringify(j1.evaluation, null, 2);
-                    } else {
-                      if (mEval) mEval.textContent = "Failed to load evaluation: " + (j1.error || "error");
-                    }
-
-                    const r2 = await fetch("/api/trust/evaluation/normalized?id=" + encodeURIComponent(evalId));
-                    const j2 = await readJson(r2);
-                    if (r2.ok) {
-                      if (mNorm) mNorm.textContent = JSON.stringify(j2, null, 2);
-                    } else {
-                      if (mNorm) mNorm.textContent = "Failed to load normalized profile: " + (j2.error || "error");
-                    }
-                  } catch (e) {
-                    if (mEval) mEval.textContent = "Error: " + String(e?.message || e);
-                    if (mNorm) mNorm.textContent = "Error: " + String(e?.message || e);
-                  }
-
-                  openModal();
-                };
-              }            
-      
-              const score = Number(report.trust_score || 0);
-              const bucket = String(report.bucket || "unknown");
-
-              // NEW: compact header like screenshot
-              const titleEl = document.getElementById("headlineTitle");
-              if (titleEl) titleEl.textContent = "Summary";
-
-              const scoreMini = document.getElementById("scoreMini");
-              if (scoreMini) scoreMini.textContent = String(score);
-
-              const bucketMini = document.getElementById("bucketMini");
-              if (bucketMini) bucketMini.innerHTML = bucketBadge(bucket);
-
-              // NEW: risk bar (inverse of trust score)
-              const risk = Math.max(0, Math.min(100, 100 - score));
-              const riskNumber = document.getElementById("riskNumber");
-              if (riskNumber) riskNumber.textContent = String(risk);
-
-              const riskFill = document.getElementById("riskFill");
-              if (riskFill) {
-                riskFill.style.width = risk + "%";
-                // color by bucket
-                if (bucket === "green") riskFill.style.background = "rgba(12,122,75,.55)";
-                else if (bucket === "yellow") riskFill.style.background = "rgba(245,158,11,.65)";
-                else if (bucket === "red") riskFill.style.background = "rgba(180,35,24,.60)";
-                else riskFill.style.background = "rgba(11,18,32,.25)";
-              }
-
-              const narrativeEl = document.getElementById("narrative");
-              if (narrativeEl) narrativeEl.textContent = report?.narrative || "";
-
-              // Populate left document sidebar (best-effort)
-              const docUploaded = document.getElementById("docUploaded");
-              if (docUploaded) docUploaded.textContent = report.created_at || "—";
-              const sum = report.summary || {};
-              document.getElementById("summary").innerHTML = [
-                pill("Tier A: " + (sum.tier_a_count ?? 0), "rgba(180,35,24,.08)", "rgba(180,35,24,.22)", "#b42318"),
-                pill("Tier B: " + (sum.tier_b_count ?? 0), "rgba(245,158,11,.10)", "rgba(245,158,11,.26)", "#8a5a00"),
-                pill("Tier C: " + (sum.tier_c_count ?? 0), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)")
-              ].join("");
-      
-              const insightsEl = document.getElementById("insights");
-              if (insightsEl) {
-                if (!signals.length) {
-                  insightsEl.innerHTML = '<div class="fine">No insights triggered.</div>';
-                } else {
-                  insightsEl.className = "insight-list";
-                  insightsEl.innerHTML = signals.map((s, i) => signalRow(s, i)).join("");
-
-                  // Click-to-expand one-liner rows
-                  insightsEl.querySelectorAll(".insight-row").forEach(row => {
-                    row.addEventListener("click", () => {
-                      const i = row.getAttribute("data-i");
-                      const detail = document.getElementById("insightDetail_" + i);
-                      if (!detail) return;
-                      detail.style.display = (detail.style.display === "none") ? "block" : "none";
-                    });
-                  });
-
-                  // Stop kebab click from toggling details (optional)
-                  insightsEl.querySelectorAll(".kebab").forEach(btn => {
-                    btn.addEventListener("click", (e) => e.stopPropagation());
-                  });
-                }
-              }
-
-              const checked = document.getElementById("checkedCount");
-              if (checked) checked.textContent = signals.length ? (signals.length + " flagged") : "0 flagged";
-              // Full analysis hint (shows if evaluation exists)
-              const hint = document.getElementById("fullAnalysisHint");
-              if (hint) {
-                hint.textContent = report.trust_evaluation_id
-                  ? "Includes evaluation + normalized snapshot"
-                  : "No evaluation attached";
-              }
-      
-              const questionsText = buildInterviewQuestions(__lastSignals);
-      
-              if (btnCopyQuestions) {
-                btnCopyQuestions.style.display = questionsText ? "inline-block" : "none";
-                btnCopyQuestions.disabled = !questionsText;
-      
-                if (questionsText) {
-                  btnCopyQuestions.onclick = async function () {
-                    const text = buildInterviewQuestions(__lastSignals);
-                    const ok = await copyToClipboard(text);
-                    showToast(ok ? "Copied interview questions" : "Copy failed");
-                  };
-                } else {
-                  btnCopyQuestions.onclick = null;
-                }
-              }
-              if (btnCopySummary) {
-                btnCopySummary.style.display = "inline-block";
-                btnCopySummary.disabled = false;
-                btnCopySummary.textContent = "Copy recruiter summary";
-                btnCopySummary.onclick = async function () {
-                  const text = buildRecruiterSummary(__lastReport, __lastSignals);
-                  const ok = await copyToClipboard(text);
-                  showToast(ok ? "Copied recruiter summary" : "Copy failed");
-                };
-              }
-              // Left sidebar trust
-              const docTrustScore = document.getElementById("docTrustScore");
-              if (docTrustScore) docTrustScore.textContent = String(report?.trust_score ?? "—");
-
-              const docBucket = document.getElementById("docBucket");
-              if (docBucket) docBucket.innerHTML = bucketBadge(report?.bucket);
-
-              // Make right header smaller
-              const scoreMini2 = document.getElementById("scoreMini");
-              if (scoreMini2) scoreMini2.textContent = "Score " + String(report?.trust_score ?? "—");
-              // Left sidebar candidate identity (best-effort from evaluation normalized profile)
-              const evalId = report?.trust_evaluation_id;
-
-              if (evalId) {
-                try {
-                  const rNorm = await fetch("/api/trust/evaluation/normalized?id=" + encodeURIComponent(evalId));
-                  const jNorm = await readJson(rNorm);
-
-                  const prof =
-                    (jNorm && (jNorm.deterministic_profile || jNorm.llm_normalized_profile)) || {};
-
-                  // These keys depend on your schema; we do "best effort" fallbacks.
-                  const name = pickFirst(prof.name, prof.candidate_name, prof.full_name, prof.basics?.name);
-                  const email = pickFirst(prof.email, prof.basics?.email);
-                  // Email link
-                  const emailA = document.getElementById("docEmailLink");
-                  const emailS = document.getElementById("docEmail");
-                  if (emailA && emailS) {
-                    if (email) {
-                      emailA.href = "mailto:" + email;
-                      emailA.textContent = email;
-                      emailA.style.display = "inline";
-                      emailA.style.textDecoration = "none";
-                      emailA.style.color = "rgba(0,120,120,1)";
-                      emailS.style.display = "none";
-                    } else {
-                      emailA.style.display = "none";
-                      emailS.style.display = "inline";
-                      emailS.textContent = "—";
-                    }
-                  }
-                  const location = pickFirst(prof.location, prof.basics?.location, prof.basics?.city);
-
-                  // social links — common places
-                  const linkedin =
-                    pickFirst(
-                      prof.linkedin,
-                      prof.linkedin_url,
-                      prof.basics?.linkedin,
-                      prof.basics?.linkedin_url,
-                      Array.isArray(prof.links) ? prof.links.find(x => String(x?.type || "").toLowerCase().includes("linkedin"))?.url : ""
-                    );
-
-                  const github =
-                    pickFirst(
-                      prof.github,
-                      prof.github_url,
-                      prof.basics?.github,
-                      prof.basics?.github_url,
-                      Array.isArray(prof.links) ? prof.links.find(x => String(x?.type || "").toLowerCase().includes("github"))?.url : ""
-                    );
-
-                  const candEl = document.getElementById("docCandidate");
-                  if (candEl) candEl.textContent = name || "—";
-
-                  const emailEl = document.getElementById("docEmail");
-                  if (emailEl) emailEl.textContent = email || "—";
-
-                  const locEl = document.getElementById("docLocation");
-                  if (locEl) locEl.textContent = location || "—";
-
-                  setLink("docLinkedIn", "docLinkedInNone", linkedin);
-                  setLink("docGitHub", "docGitHubNone", github);
-                } catch (e) {
-                  // Ignore: left sidebar will just show —
-                }
-              }
-            }
-            document.addEventListener("keydown", (e) => {
-              if (e.key === "Escape") closeModal();
             });
-            document.getElementById("refresh").addEventListener("click", load);
-            function setTab(which) {
+
+            syncIcon();
+          })();
+
+          function commercializeOneLiner(ttl, explanation) {
+            const t = String(ttl || "").toLowerCase();
+            const e = String(explanation || "");
+            if (t.includes("gap")) return "Verify timeline; ask for context (career break, exam prep, notice period).";
+            if (t.includes("overlap")) return "Clarify concurrent roles to reduce hiring risk.";
+            if (t.includes("duplicate")) return "Confirm source consistency; potential copy/paste or reused content.";
+            return e.length > 90 ? (e.slice(0, 90) + "…") : e;
+          }
+
+          function signalRow(s, idx) {
+            const title = esc((s && (s.title || s.signal_id)) ? (s.title || s.signal_id) : "Signal");
+            const explRaw = String((s && s.explanation) || "");
+            const expl = esc(explRaw);
+
+            const sevTier = String((s && s.severity_tier) || "C");
+            const conf = String((s && s.confidence) || "low");
+
+            const impact =
+              (sevTier === "A") ? "High risk" :
+              (sevTier === "B") ? "Moderate risk" :
+              "Low risk";
+
+            const confTxt =
+              (conf === "high") ? "High confidence" :
+              (conf === "medium") ? "Medium confidence" :
+              "Low confidence";
+
+            const meta = impact + " • " + confTxt;
+            const sub = commercializeOneLiner(title, explRaw);
+
+            const iconChar = (sevTier === "C") ? "✓" : "!";
+            const iconClass =
+              (sevTier === "A") ? "sevA" :
+              (sevTier === "B") ? "sevB" :
+              "sevC";
+
+            return (
+              '<div class="insight-item">' +
+                '<div class="insight-row" data-i="' + idx + '" role="button" tabindex="0" aria-expanded="false">' +
+                  '<div class="insight-left">' +
+                    '<div class="insight-icon ' + iconClass + '">' + iconChar + '</div>' +
+                    '<div style="min-width:0;">' +
+                      '<div class="insight-title">' + title + '</div>' +
+                      '<div class="insight-sub">' + esc(meta) + (sub ? (" — " + esc(sub)) : "") + '</div>' +
+                    '</div>' +
+                  '</div>' +
+                  '<div class="insight-right">' +
+                    severityTag(sevTier) +
+                    '<div class="chev" aria-hidden="true">▾</div>' +
+                  '</div>' +
+                '</div>' +
+
+                '<div class="insight-details" id="insightDetail_' + idx + '">' +
+                  (expl ? ('<div style="color:rgba(11,18,32,.75); line-height:1.5;">' + expl + '</div>') : '') +
+                  ((Array.isArray(s && s.suggested_questions) && s.suggested_questions.length)
+                    ? (
+                        '<div style="margin-top:10px;">' +
+                          '<div class="fine">Suggested questions</div>' +
+                          '<ul style="margin:8px 0 0; padding-left:18px;">' +
+                            s.suggested_questions.map(function(q){ return '<li>' + esc(q) + '</li>'; }).join('') +
+                          '</ul>' +
+                        '</div>'
+                      )
+                    : ''
+                  ) +
+                '</div>' +
+              '</div>'
+            );
+          }
+
+          async function copyToClipboard(text) {
+            try {
+              await navigator.clipboard.writeText(text);
+              return true;
+            } catch (e) {
+              try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                const ok = document.execCommand("copy");
+                document.body.removeChild(ta);
+                return ok;
+              } catch {
+                return false;
+              }
+            }
+          }
+
+          function showToast(msg) {
+            const el = document.getElementById("copyToast");
+            if (!el) return;
+            el.textContent = msg;
+            el.style.display = "inline";
+            clearTimeout(window.__toastT);
+            window.__toastT = setTimeout(function () {
+              el.style.display = "none";
+            }, 1400);
+          }
+
+          function buildInterviewQuestions(signals) {
+            const list = Array.isArray(signals) ? signals : [];
+            const seen = new Set();
+            const out = [];
+            const NL = String.fromCharCode(10);
+
+            for (const s of list) {
+              const title = (s && (s.title || s.signal_id)) ? (s.title || s.signal_id) : "Signal";
+              const qs = Array.isArray(s && s.suggested_questions) ? s.suggested_questions : [];
+              const cleanQs = qs.map(function (q) { return String(q || "").trim(); }).filter(Boolean);
+              if (!cleanQs.length) continue;
+
+              out.push("## " + title);
+              for (const q of cleanQs) {
+                const key = q.toLowerCase();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                out.push("- " + q);
+              }
+              out.push("");
+            }
+            return out.join(NL).trim();
+          }
+
+          function buildRecruiterSummary(report, signals) {
+            const score = Number((report && report.trust_score) || 0);
+            const bucket = String((report && report.bucket) || "unknown").toUpperCase();
+            const NL = String.fromCharCode(10);
+            const list = Array.isArray(signals) ? signals : [];
+
+            const top = list.slice(0, 3).map(function (s) {
+              const title = (s && (s.title || s.signal_id)) ? (s.title || s.signal_id) : "Signal";
+              const sev = s?.severity_tier ? s.severity_tier : "?";
+              const ded = Number(s?.deduction || 0);
+              const dd = (ded === 0) ? "0" : (ded > 0 ? ("-" + ded) : ("+" + Math.abs(ded)));
+              return "- [Tier " + sev + "] " + title + " (" + dd + ")";
+            }).join(NL) || "- None";
+
+            const questions = buildInterviewQuestions(signals);
+
+            return [
+              "SignalTrust Summary",
+              "Score: " + score + " (" + bucket + ")",
+              "",
+              "Top risks:",
+              top,
+              "",
+              questions ? ("Interview questions:" + NL + questions) : ("Interview questions:" + NL + "- None"),
+            ].join(NL);
+          }
+
+          function setTab(which) {
             const a = document.getElementById("tabAnalysis");
             const d = document.getElementById("tabDetails");
             const pa = document.getElementById("panelAnalysis");
@@ -1360,9 +970,6 @@ export async function renderTrustReportPage(request, env) {
             pd.hidden = isAnalysis;
           }
 
-          document.getElementById("tabAnalysis")?.addEventListener("click", () => setTab("analysis"));
-          document.getElementById("tabDetails")?.addEventListener("click", () => setTab("details"));
-
           function openModal() {
             const m = document.getElementById("analysisModal");
             if (!m) return;
@@ -1378,20 +985,291 @@ export async function renderTrustReportPage(request, env) {
             m.setAttribute("aria-hidden", "true");
             document.body.style.overflow = "";
           }
+
+          document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") closeModal();
+          });
+
           document.getElementById("btnCloseModal")?.addEventListener("click", closeModal);
           document.getElementById("analysisModal")?.addEventListener("click", (e) => {
             if (e.target && e.target.id === "analysisModal") closeModal();
           });
-            load();
-          </script>
+
+          document.getElementById("tabAnalysis")?.addEventListener("click", () => setTab("analysis"));
+          document.getElementById("tabDetails")?.addEventListener("click", () => setTab("details"));
+
+          async function load() {
+            const btnCopySummary = document.getElementById("btnCopySummary");
+            const btnCopyQuestions = document.getElementById("btnCopyQuestions");
+
+            const ht = document.getElementById("headlineTitle");
+            if (ht) ht.textContent = "Loading…";
+            const insights = document.getElementById("insights");
+            if (insights) insights.innerHTML = '<div class="fine">Loading…</div>';
+
+            const res = await fetch("/api/trust/report?id=" + encodeURIComponent(reportId));
+            const data = await readJson(res);
+
+            if (!res.ok) {
+              if (ht) ht.textContent = "Failed to load";
+              const narrative = document.getElementById("narrative");
+              if (narrative) narrative.textContent = data.error || "Error";
+              if (insights) insights.innerHTML = "";
+              return;
+            }
+
+            const report = data.report;
+            const signals = Array.isArray(data.signals) ? data.signals : [];
+            __lastReport = report;
+            __lastSignals = signals;
+
+            // Details tab
+            document.getElementById("dEngine").textContent = String(report.engine_version || "—");
+            const dExtraction = document.getElementById("dExtraction");
+            if (dExtraction) {
+              dExtraction.textContent =
+                "Created: " + (report.created_at || "—") +
+                " • Bucket: " + (report.bucket || "—") +
+                " • Hard: " + (report.hard_triggered ? "Yes" : "No");
+            }
+            document.getElementById("dReportJson").textContent = JSON.stringify(report, null, 2);
+            document.getElementById("dSignalsJson").textContent = JSON.stringify(signals, null, 2);
+
+            const score = Number(report.trust_score || 0);
+            const bucket = String(report.bucket || "unknown");
+
+            // Header
+            if (ht) ht.textContent = "Risk & Signals";
+            const scoreMini = document.getElementById("scoreMini");
+            if (scoreMini) scoreMini.textContent = "Score " + String(score);
+
+            const bucketMini = document.getElementById("bucketMini");
+            if (bucketMini) bucketMini.innerHTML = bucketBadge(bucket);
+
+            // Summary badge + score (right side of summary card header)
+            const summaryBadge = document.getElementById("summaryBadge");
+            if (summaryBadge) summaryBadge.innerHTML = bucketBadge(bucket);
+            const summaryScore = document.getElementById("summaryScore");
+            if (summaryScore) summaryScore.textContent = String(score);
+
+            // Risk bar (inverse of trust)
+            const risk = Math.max(0, Math.min(100, 100 - score));
+            const riskNumber = document.getElementById("riskNumber");
+            if (riskNumber) riskNumber.textContent = String(risk);
+
+            const riskFill = document.getElementById("riskFill");
+            if (riskFill) {
+              riskFill.style.width = risk + "%";
+              if (bucket === "green") riskFill.style.background = "rgba(12,122,75,.55)";
+              else if (bucket === "yellow") riskFill.style.background = "rgba(245,158,11,.65)";
+              else if (bucket === "red") riskFill.style.background = "rgba(180,35,24,.60)";
+              else riskFill.style.background = "rgba(11,18,32,.25)";
+            }
+
+            const narrativeEl = document.getElementById("narrative");
+            if (narrativeEl) narrativeEl.textContent = report?.narrative || "";
+
+            // AI Summary (kept)
+            const aiText = document.getElementById("aiSummaryText");
+            if (aiText) aiText.innerHTML = '<span class="fine">(loading…)</span>';
+            try {
+              const res2 = await fetch("/api/trust/ai-summary", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ trust_report_id: reportId })
+              });
+              const j2 = await res2.json();
+              if (res2.ok && aiText) {
+                const NL = String.fromCharCode(10);
+                aiText.innerHTML = esc(j2.summary || "(No summary returned)").replaceAll(NL, "<br/>");
+              } else if (aiText) {
+                aiText.innerHTML = '<span class="fine">(AI summary unavailable)</span>';
+              }
+            } catch (e) {
+              if (aiText) aiText.innerHTML = '<span class="fine">(AI summary unavailable)</span>';
+            }
+
+            // Insights expand/collapse
+            const btnToggle = document.getElementById("btnToggleInsights");
+            const wrap = document.getElementById("insightsWrap");
+
+            function setInsightsOpen(open) {
+              if (!wrap || !btnToggle) return;
+              wrap.style.display = open ? "block" : "none";
+              btnToggle.textContent = open ? "Collapse" : "Expand";
+              btnToggle.setAttribute("aria-expanded", open ? "true" : "false");
+            }
+            btnToggle?.addEventListener("click", () => {
+              const isOpen = wrap && wrap.style.display !== "none";
+              setInsightsOpen(!isOpen);
+            });
+
+            // default: collapsed for green, open for yellow/red
+            setInsightsOpen(bucket !== "green");
+
+            const insightCountPillEl = document.getElementById("insightCountPill");
+            if (insightCountPillEl) insightCountPillEl.textContent = (signals.length + " insights");
+
+            if (insights) {
+              if (!signals.length) {
+                insights.innerHTML = '<div class="fine">No insights triggered.</div>';
+              } else {
+                insights.className = "insight-list";
+                insights.innerHTML = signals.map((s, i) => signalRow(s, i)).join("");
+
+                insights.querySelectorAll(".insight-row").forEach(row => {
+                  function toggle() {
+                    const i = row.getAttribute("data-i");
+                    const detail = document.getElementById("insightDetail_" + i);
+                    if (!detail) return;
+
+                    const isOpen = row.classList.contains("open");
+                    row.classList.toggle("open", !isOpen);
+                    row.setAttribute("aria-expanded", (!isOpen) ? "true" : "false");
+                  }
+
+                  row.addEventListener("click", toggle);
+                  row.addEventListener("keydown", (e) => {
+                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+                  });
+                });
+              }
+            }
+
+            // Checked part like screenshot #2
+            const checked = document.getElementById("checkedCount");
+            if (checked) {
+              // if your API later returns totals, drop them in here:
+              const totalChecked = Number(report?.checked_count || report?.signals_checked_total || 0);
+              if (totalChecked > 0) checked.textContent = signals.length + " Flagged  " + totalChecked + " Checked";
+              else checked.textContent = signals.length + " Flagged";
+            }
+
+            // Full analysis modal hook
+            const btnFull = document.getElementById("btnFullAnalysis");
+            if (btnFull) {
+              btnFull.disabled = false;
+              btnFull.onclick = async function () {
+                document.getElementById("mReport").textContent = JSON.stringify(report, null, 2);
+                document.getElementById("mSignals").textContent = JSON.stringify(signals, null, 2);
+
+                const evalId = report.trust_evaluation_id;
+                const mEval = document.getElementById("mEval");
+                const mNorm = document.getElementById("mNorm");
+
+                if (!evalId) {
+                  if (mEval) mEval.textContent = "(no evaluation attached)";
+                  if (mNorm) mNorm.textContent = "(no evaluation attached)";
+                  openModal();
+                  return;
+                }
+
+                try {
+                  if (mEval) mEval.textContent = "(loading…)";
+                  if (mNorm) mNorm.textContent = "(loading…)";
+
+                  const r1 = await fetch("/api/trust/evaluation?id=" + encodeURIComponent(evalId));
+                  const j1 = await readJson(r1);
+                  if (r1.ok) {
+                    if (mEval) mEval.textContent = JSON.stringify(j1.evaluation, null, 2);
+                  } else {
+                    if (mEval) mEval.textContent = "Failed to load evaluation: " + (j1.error || "error");
+                  }
+
+                  const r2 = await fetch("/api/trust/evaluation/normalized?id=" + encodeURIComponent(evalId));
+                  const j2 = await readJson(r2);
+                  if (r2.ok) {
+                    if (mNorm) mNorm.textContent = JSON.stringify(j2, null, 2);
+                  } else {
+                    if (mNorm) mNorm.textContent = "Failed to load normalized profile: " + (j2.error || "error");
+                  }
+                } catch (e) {
+                  if (mEval) mEval.textContent = "Error: " + String(e?.message || e);
+                  if (mNorm) mNorm.textContent = "Error: " + String(e?.message || e);
+                }
+
+                openModal();
+              };
+            }
+
+            // Copy buttons
+            const questionsText = buildInterviewQuestions(__lastSignals);
+            if (btnCopyQuestions) {
+              btnCopyQuestions.disabled = !questionsText;
+              btnCopyQuestions.onclick = questionsText
+                ? async function () {
+                    const text = buildInterviewQuestions(__lastSignals);
+                    const ok = await copyToClipboard(text);
+                    showToast(ok ? "Copied interview questions" : "Copy failed");
+                  }
+                : null;
+            }
+
+            if (btnCopySummary) {
+              btnCopySummary.disabled = false;
+              btnCopySummary.onclick = async function () {
+                const text = buildRecruiterSummary(__lastReport, __lastSignals);
+                const ok = await copyToClipboard(text);
+                showToast(ok ? "Copied recruiter summary" : "Copy failed");
+              };
+            }
+
+            // Left sidebar trust
+            const docUploaded = document.getElementById("docUploaded");
+            if (docUploaded) docUploaded.textContent = report.created_at || "—";
+
+            const docTrustScore = document.getElementById("docTrustScore");
+            if (docTrustScore) docTrustScore.textContent = String(report?.trust_score ?? "—");
+
+            const docBucket = document.getElementById("docBucket");
+            if (docBucket) docBucket.innerHTML = bucketBadge(report?.bucket);
+
+            // Left sidebar candidate identity (best-effort from normalized profile)
+            const evalId = report?.trust_evaluation_id;
+            if (evalId) {
+              try {
+                const rNorm = await fetch("/api/trust/evaluation/normalized?id=" + encodeURIComponent(evalId));
+                const jNorm = await readJson(rNorm);
+
+                const llm = jNorm?.llm_normalized_profile || {};
+                const det = jNorm?.deterministic_profile || {};
+                const cand = llm?.candidate || {};
+
+                const name = pickFirst(cand.name);
+                const email = pickFirst(cand.email);
+                const location = pickFirst(llm?.roles?.[0]?.location, det?.person?.location?.raw);
+                const linkedin = pickFirst(cand.linkedin);
+
+                const ghLogin = pickFirst(det?.__github_public?.github_login);
+                const github = ghLogin ? ("https://github.com/" + ghLogin) : "";
+
+                const candEl = document.getElementById("docCandidate");
+                if (candEl) candEl.textContent = name || "—";
+
+                const locEl = document.getElementById("docLocation");
+                if (locEl) locEl.textContent = location || "—";
+
+                setEmail(email);
+                setLink("docLinkedIn", "docLinkedInNone", linkedin);
+                setLink("docGitHub", "docGitHubNone", github);
+              } catch (e) {
+                // ignore
+              }
+            }
+          }
+
+          document.getElementById("refresh")?.addEventListener("click", load);
+          load();
+        </script>
       </div>
-      `
-    });
-  
-    return new Response(html, {
-      headers: { "content-type": "text/html; charset=UTF-8", "cache-control": "no-store" },
-    });
+    `,
+  });
+
+  return new Response(html, {
+    headers: { "content-type": "text/html; charset=UTF-8", "cache-control": "no-store" },
+  });
 }
+
 export async function renderTrustProfilePage(request, env) {
     const sess = await requireSession(request, env);
     if (!sess) return redirect("/");
