@@ -3,7 +3,8 @@
 import { summarizeRole } from "../../src/lib/utils.js";
 import { detectSectionRanges, sliceSection } from "../../src/engine/normalize_v1.js";
 import { extractClaimKeywords } from "../../core/github/extract.js";
-
+import { SIGNAL_CATALOG } from "./signals/catalog";
+console.log("Loaded SIGNAL_CATALOG", SIGNAL_CATALOG);
 export type SignalTier = "A" | "B" | "C";
 export type SignalStatus = "triggered" | "not_triggered";
 export type SignalConfidence = "low" | "medium" | "high";
@@ -43,6 +44,8 @@ export function defaultSignalConfigV1(): SignalConfigV1 {
       career_velocity: true,
       github_public_activity: true,
       github_public_claim_match: true,
+      employer_existence_validation: true,
+      claim_corroboration_coverage: true,
       //date_precision_confidence: true,
       //skill_timeline_mismatch: true,
     },
@@ -62,9 +65,24 @@ export function runSignalsV1(profile: any, config: SignalConfigV1, ctx: RunSigna
   if (config.enabled.career_velocity) out.push(signalCareerVelocity(profile));
   if (config.enabled.github_public_activity) out.push(signalGithubPublicActivity(profile, ctx));
   if (config.enabled.github_public_claim_match) out.push(signalGithubPublicClaimMatch(profile, ctx));
-//   if (config.enabled.date_precision_confidence) out.push(signalDatePrecisionConfidence(profile));
-//   if (config.enabled.skill_timeline_mismatch) out.push(signalSkillTimelineMismatch(profile, ctx));
+  //   if (config.enabled.date_precision_confidence) out.push(signalDatePrecisionConfidence(profile));
+  //   if (config.enabled.skill_timeline_mismatch) out.push(signalSkillTimelineMismatch(profile, ctx));
   // ✅ Anti-double-counting: early-career "gap after edu" overlaps with "gap between roles"
+  // Run catalog signals (v2 signals)
+  
+  console.log("SIGNAL_CATALOG size", SIGNAL_CATALOG.length);
+
+  for (const def of SIGNAL_CATALOG) {
+    if (config.enabled[def.id] !== false) {
+      try {
+        console.log("Running catalog signal", def.id);
+        const result = def.run(profile, ctx);
+        out.push(result);
+      } catch (err) {
+        console.warn("Signal execution failed:", def.id, err);
+      }
+    }
+  }
   return dedupeEarlyCareerGaps(out);
 }
 
@@ -108,6 +126,8 @@ export function signalTitle(id: string): string {
     career_velocity: "Career Velocity Anomaly",
     github_public_activity: "GitHub Activity Evidence (Public)",
     github_public_claim_match: "GitHub Skill Plausibility Match (Public)",
+    employer_existence_validation: "Employer Existence Validation",
+    claim_corroboration_coverage: "Claim Corroboration Coverage",
   };
   return map[id] || id;
 }
@@ -696,7 +716,7 @@ export function signalCareerVelocity(profile: any) {
     const isDirectorPlus = (t: any) => /\b(director|head|vp|vice president|principal|staff)\b/i.test(t || "");
   
     let bestHit = null;
-
+    console.log("DEBUG_CAREER_ROLES", JSON.stringify(profile.experience, null, 2));
     for (const r of sorted) {
       const startMs = earliestPossibleStartMs(r.start_date);
       if (!Number.isFinite(startMs) || !Number.isFinite(firstMs)) continue;

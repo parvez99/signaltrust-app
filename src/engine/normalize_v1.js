@@ -35,7 +35,6 @@ function looksLikeLocationToken(s) {
   if (/\b(engineer|developer|manager|lead|senior|director|vp|head|architect|intern|consultant)\b/i.test(x)) return false;
   return true;
 }
-
 function coalesceWrappedMonthYearLines(lines) {
   const out = [];
   const monthRe = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b\.?$/i;
@@ -325,7 +324,29 @@ export function guessNameFromLines(lines) {
     }
     return "";
 }
+function detectRolePattern(line1, line2) {
 
+  const titleWords = [
+    "engineer","developer","director","manager",
+    "analyst","architect","consultant","lead"
+  ];
+
+  const looksLikeTitle = titleWords.some(w =>
+    (line1 || "").toLowerCase().includes(w)
+  );
+
+  if (looksLikeTitle) {
+    return {
+      titleLine: line1,
+      companyLine: line2
+    };
+  }
+
+  return {
+    titleLine: line2,
+    companyLine: line1
+  };
+}
 export function extractExperienceBlocks(lines, mkEv) {
     const out = [];
   
@@ -334,6 +355,10 @@ export function extractExperienceBlocks(lines, mkEv) {
       const line = (lines[i] || "").trim();
       if (!line) continue;
   
+      // 🚫 Skip bullet description lines so they don't become company/title
+      if (isBulletLine(line)) continue;
+
+      if (line.split(" ").length > 15) continue;
       // ---- section toggles ----
       if (/^(career history|work experience|experience|employment)\b/i.test(line)) {
         inExperience = true;
@@ -352,17 +377,28 @@ export function extractExperienceBlocks(lines, mkEv) {
       
       // 🔥 Direct structural extraction (robust to wrapped company/location lines)
 
-      let line1 = (lines[i - 1] || "").trim(); // usually company or location
-      let line2 = (lines[i - 2] || "").trim(); // usually title or company
-      let line3 = (lines[i - 3] || "").trim(); // optional (for wrapped cases)
+      let line1 = findNearestContextLine(lines, i);
+      let line2 = findNearestContextLine(lines, i - 1);
+      let line3 = findNearestContextLine(lines, i - 2);
 
       // Safety
       if (!line1 || !line2) continue;
       if (parseDateRangeFromLine(line1)) continue;
       if (/^(experience|education|projects|skills|certifications)/i.test(line1)) continue;
 
-      let titleLine = line2;
-      let companyLine = line1;
+      const detected = detectRolePattern(line1, line2)
+
+      let titleLine = detected.titleLine
+      let companyLine = detected.companyLine
+      
+      // detect if lines are swapped (title first, company second)
+      const looksLikeTitle = /(engineer|developer|director|manager|analyst|architect)/i.test(line1);
+      const looksLikeCompany = !looksLikeTitle;
+      
+      if (looksLikeTitle) {
+        titleLine = line1;
+        companyLine = line2;
+      }
       let locationLine = "";
 
       // 🧠 Detect wrapped case:
@@ -392,21 +428,27 @@ export function extractExperienceBlocks(lines, mkEv) {
       if (parseDateRangeFromLine(companyLine)) continue;
       if (/^(experience|education|projects|skills|certifications)/i.test(companyLine)) continue;
       
-      let finalCompany = "";
       let finalLocation = "";
       
+      let finalCompany = "";
+
       if (companyLine.includes(",")) {
         const parts = companyLine.split(",");
         finalCompany = parts[0].trim();
         finalLocation = parts.slice(1).join(",").trim();
       } else {
-        finalCompany = companyLine;
+        finalCompany = companyLine.trim();
+      }
+      
+      /* fallback detection */
+      if (!finalCompany && titleLine && !looksLikeBulletTitle(titleLine)) {
+        finalCompany = titleLine;
       }
       
       const finalTitle = cleanTitle(titleLine);
       
       const expId = "exp_" + (out.length + 1);
-      
+      if (looksLikeBulletTitle(finalTitle)) continue;
       out.push({
         exp_id: expId,
         company: {
@@ -613,21 +655,36 @@ export function isBulletLine(s) {
 }
 
 export function findNearestContextLine(lines, idx) {
-    // Look upward up to 6 lines to find a non-bullet context line
-    for (let j = idx - 1; j >= Math.max(0, idx - 6); j--) {
-      const l = (lines[j] || "").trim();
-      if (!l) continue;
-      if (isBulletLine(l)) continue;
-      // Skip common section headers too
-      if (/^(experience|work experience|employment|professional experience|projects|education|skills)\b/i.test(l)) continue;
-      return l;
-    }
-    return lines[idx] || "";
+  // look upward up to 6 lines
+  for (let j = idx - 1; j >= Math.max(0, idx - 6); j--) {
+    const l = (lines[j] || "").trim();
+
+    if (!l) continue;
+
+    // skip bullets
+    if (isBulletLine(l)) continue;
+
+    // skip section headers
+    if (/^(experience|work experience|employment|professional experience|projects|education|skills|certifications)\b/i.test(l))
+      continue;
+
+    // skip long description sentences
+    if (l.split(" ").length > 12) continue;
+
+    return l;
+  }
+
+  return "";
 }
 
 export function looksLikeBulletTitle(titleRaw) {
-    const t = (titleRaw || "").trim();
-    return isBulletLine(t) || t.length > 80 || /^[•·●-]/.test(t);
+  const t = (titleRaw || "").trim();
+
+  return (
+    isBulletLine(t) ||
+    t.length > 80 ||
+    /^[•▪●·\-]/.test(t)
+  );
 }
 
 export function parseTitleCompany(line) {

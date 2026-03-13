@@ -108,6 +108,10 @@ export async function runTrustPipeline(args: {
     sourceFilename: sourceFilename ?? "",
     now,
   })
+  const signalCtx: any = {
+    sourceText,
+    sourceFilename: sourceFilename ?? null,
+  };
     console.log("DEBUG_SOURCE_TEXT_HAS_GITHUB", sourceText.includes("github"));
     console.log("DEBUG_EXTRACTED_GH", extractGithubUsername(sourceText));
     console.log("DEBUG_TRUST_PROFILE_ID", trustProfileId);
@@ -215,43 +219,38 @@ export async function runTrustPipeline(args: {
       // best-effort
     }
     // 3.5️⃣ Enrich deterministic profile with duplicate-upload info (doc_hash)
-  try {
-    const docHash = await sha256Hex(normalizeForDocHash(sourceText))
-
-    const row: any = await env.DB.prepare(
-      `SELECT
-         COUNT(*) as c,
-         MIN(created_at) as first_seen_at,
-         MAX(created_at) as last_seen_at
-       FROM trust_candidate_profiles
-       WHERE created_by_candidate_id = ?1
-         AND doc_hash = ?2`
-    ).bind(candidateId, docHash).first()
-
-    const total = Number(row?.c || 0)
-
-    // If this pipeline run happens after ingest insert, the current upload is included in COUNT(*)
-    const priorCount = Math.max(0, total - 1)
-    const signalCtx = { sourceText, sourceFilename: sourceFilename ?? null } as any;
-
-    signalCtx.__dup_doc = {
-      doc_hash: docHash,
-      prior_count: priorCount,
-      first_seen_at: row?.first_seen_at ?? null,
-      last_seen_at: row?.last_seen_at ?? null,
+    try {
+      const docHash = await sha256Hex(normalizeForDocHash(sourceText))
+    
+      const row: any = await env.DB.prepare(
+        `SELECT
+           COUNT(*) as c,
+           MIN(created_at) as first_seen_at,
+           MAX(created_at) as last_seen_at
+         FROM trust_candidate_profiles
+         WHERE created_by_candidate_id = ?1
+           AND doc_hash = ?2`
+      ).bind(candidateId, docHash).first()
+    
+      const total = Number(row?.c || 0)
+      const priorCount = Math.max(0, total - 1)
+    
+      signalCtx.__dup_doc = {
+        doc_hash: docHash,
+        prior_count: priorCount,
+        first_seen_at: row?.first_seen_at ?? null,
+        last_seen_at: row?.last_seen_at ?? null,
+      }
+    
+    } catch {
+      // non-fatal
     }
-  } catch {
-    // Non-fatal: duplicate-upload signal will just show "no doc hash available"
-  }
 
-  const triggeredSignals = runSignalsV1(profileForSignals, config, {
-    sourceText,
-    sourceFilename: sourceFilename ?? null,
-  })
+    const triggeredSignals = runSignalsV1(profileForSignals, config, signalCtx)
 
-  // 4️⃣ Score
-  const scoring = scoreAndBucketV1(triggeredSignals)
-  const narrative = generateRiskNarrative(scoring, triggeredSignals);
+    // 4️⃣ Score
+    const scoring = scoreAndBucketV1(triggeredSignals);
+    const narrative = generateRiskNarrative(scoring, triggeredSignals);
 
   // Optional but recommended: use deterministic profile for report rendering
   return {
