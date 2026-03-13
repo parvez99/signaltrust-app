@@ -163,6 +163,18 @@ export function normalizeResumeTextToProfileV1({ candidateId, sourceText, source
     };
 }
 
+function looksLikeTitle(line) {
+  const t = (line || "").toLowerCase();
+
+  const titleWords = [
+    "engineer","developer","director","manager","lead",
+    "architect","consultant","analyst","specialist",
+    "administrator","designer","scientist"
+  ];
+
+  return titleWords.some(w => t.includes(w));
+}
+
 export function computeParsingQuality({ ranges, exp, edu }) {
   const roles = Array.isArray(exp) ? exp : [];
   const expCount = roles.length;
@@ -324,24 +336,27 @@ export function guessNameFromLines(lines) {
     }
     return "";
 }
+
 function detectRolePattern(line1, line2) {
 
-  const titleWords = [
-    "engineer","developer","director","manager",
-    "analyst","architect","consultant","lead"
-  ];
+  const line1Title = looksLikeTitle(line1);
+  const line2Title = looksLikeTitle(line2);
 
-  const looksLikeTitle = titleWords.some(w =>
-    (line1 || "").toLowerCase().includes(w)
-  );
-
-  if (looksLikeTitle) {
+  if (line1Title && !line2Title) {
     return {
       titleLine: line1,
       companyLine: line2
     };
   }
 
+  if (!line1Title && line2Title) {
+    return {
+      titleLine: line2,
+      companyLine: line1
+    };
+  }
+
+  // fallback
   return {
     titleLine: line2,
     companyLine: line1
@@ -377,29 +392,62 @@ export function extractExperienceBlocks(lines, mkEv) {
       
       // 🔥 Direct structural extraction (robust to wrapped company/location lines)
 
-      let line1 = findNearestContextLine(lines, i);
-      let line2 = findNearestContextLine(lines, i - 1);
-      let line3 = findNearestContextLine(lines, i - 2);
-
+      let line1 = (lines[i - 1] || "").trim();
+      let line2 = (lines[i - 2] || "").trim();
+      let line3 = (lines[i - 3] || "").trim();
+      
+      let titleLine = "";
+      let companyLine = "";
+      let locationLine = "";
+      
+      /*
+      Pattern detection:
+      
+      TITLE
+      COMPANY
+      LOCATION
+      DATE
+      */
+      
+      if (
+        line3 &&
+        !parseDateRangeFromLine(line3) &&
+        !isBulletLine(line3) &&
+        !looksLikeLocationToken(line3) &&
+        looksLikeLocationToken(line1)
+      ) {
+        titleLine = line3;
+        companyLine = line2;
+        locationLine = line1;
+      }
+      else {
+        const detected = detectRolePattern(line1, line2);
+        titleLine = detected.titleLine;
+        companyLine = detected.companyLine;
+      }
       // Safety
       if (!line1 || !line2) continue;
       if (parseDateRangeFromLine(line1)) continue;
       if (/^(experience|education|projects|skills|certifications)/i.test(line1)) continue;
-
-      const detected = detectRolePattern(line1, line2)
-
-      let titleLine = detected.titleLine
-      let companyLine = detected.companyLine
       
-      // detect if lines are swapped (title first, company second)
-      const looksLikeTitle = /(engineer|developer|director|manager|analyst|architect)/i.test(line1);
-      const looksLikeCompany = !looksLikeTitle;
       
-      if (looksLikeTitle) {
-        titleLine = line1;
-        companyLine = line2;
+      // --- Employer entity stabilization ---
+      const titleKeywords =
+        /(engineer|developer|manager|director|lead|architect|analyst|consultant|sre|devops|platform|data|cloud|principal|staff)/i
+      
+      // If company accidentally contains title words → swap
+      if (titleKeywords.test(companyLine) && !titleKeywords.test(titleLine)) {
+        const tmp = companyLine
+        companyLine = titleLine
+        titleLine = tmp
       }
-      let locationLine = "";
+      
+      // If title is extremely long sentence → likely description
+      if ((titleLine || "").split(" ").length > 8) {
+        const tmp = companyLine
+        companyLine = titleLine
+        titleLine = tmp
+      }
 
       // 🧠 Detect wrapped case:
       // If line1 looks like a location,
@@ -429,9 +477,8 @@ export function extractExperienceBlocks(lines, mkEv) {
       if (/^(experience|education|projects|skills|certifications)/i.test(companyLine)) continue;
       
       let finalLocation = "";
-      
       let finalCompany = "";
-
+      
       if (companyLine.includes(",")) {
         const parts = companyLine.split(",");
         finalCompany = parts[0].trim();
@@ -439,6 +486,12 @@ export function extractExperienceBlocks(lines, mkEv) {
       } else {
         finalCompany = companyLine.trim();
       }
+      
+      /* normalize company entity */
+      finalCompany = finalCompany
+        .replace(/ - .*$/, "")   // remove dash location
+        .replace(/\s+remote$/i, "") // remove "Remote"
+        .trim();
       
       /* fallback detection */
       if (!finalCompany && titleLine && !looksLikeBulletTitle(titleLine)) {
@@ -713,13 +766,25 @@ export function parseTitleCompany(line) {
 }
  
 export function inferSeniorityBand(title) {
-    const t = (title || "").toLowerCase();
-    if (/(chief|cto|ceo|cpo|ciso|vp|vice president|director)/.test(t)) return "exec";
-    if (/(principal|staff|lead|architect)/.test(t)) return "lead";
-    if (/(senior)/.test(t)) return "senior";
-    if (/(intern|trainee)/.test(t)) return "intern";
-    if (t) return "mid";
-    return "unknown";
+
+  const t = (title || "").toLowerCase();
+
+  if (/(chief|cto|ceo|cpo|ciso|vp|vice president|director)/.test(t))
+    return "exec";
+
+  if (/(principal|staff|lead|architect)/.test(t))
+    return "lead";
+
+  if (/(senior)/.test(t))
+    return "senior";
+
+  if (/(intern|trainee|graduate)/.test(t))
+    return "intern";
+
+  if (t)
+    return "mid";
+
+  return "unknown";
 }
 
 // Date parsing helpers (MVP, not exhaustive)

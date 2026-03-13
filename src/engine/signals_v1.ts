@@ -4,6 +4,7 @@ import { summarizeRole } from "../../src/lib/utils.js";
 import { detectSectionRanges, sliceSection } from "../../src/engine/normalize_v1.js";
 import { extractClaimKeywords } from "../../core/github/extract.js";
 import { SIGNAL_CATALOG } from "./signals/catalog";
+import { signalInterviewWasteProbability } from "./signals/interview_waste_probability";
 console.log("Loaded SIGNAL_CATALOG", SIGNAL_CATALOG);
 export type SignalTier = "A" | "B" | "C";
 export type SignalStatus = "triggered" | "not_triggered";
@@ -75,8 +76,10 @@ export function runSignalsV1(profile: any, config: SignalConfigV1, ctx: RunSigna
   for (const def of SIGNAL_CATALOG) {
     if (config.enabled[def.id] !== false) {
       try {
-        console.log("Running catalog signal", def.id);
-        const result = def.run(profile, ctx);
+        const result = def.run(profile, {
+          ...ctx,
+          triggeredSignals: out
+        });
         out.push(result);
       } catch (err) {
         console.warn("Signal execution failed:", def.id, err);
@@ -253,6 +256,16 @@ export function signalTimelineOverlap(profile: any): SignalResult {
     for (let j = i + 1; j < roles.length; j++) {
       const role1 = roles[i];
       const role2 = roles[j];
+      // Ignore overlaps when one role ends with YEAR precision
+      // and the next role starts with MONTH precision (common resume pattern)
+
+      const yearMonthBoundary =
+        (role1.end_date?.precision === "year" && role2.start_date?.precision === "month") ||
+        (role2.end_date?.precision === "year" && role1.start_date?.precision === "month");
+
+      if (yearMonthBoundary) {
+        continue;
+      }
 
       const overlapDays = calcOverlapDays(role1.start_date, role1.end_date, role2.start_date, role2.end_date);
 
