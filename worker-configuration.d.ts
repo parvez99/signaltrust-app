@@ -4,6 +4,8 @@ declare global {
       ASSETS: Fetcher
       DB: D1Database,
       MAINTENANCE_MODE: string,
+      RESUME_BUCKET: R2Bucket;
+      RESUME_QUEUE: Queue;
 
       // Optional but recommended for higher GitHub API rate limits.
       // If unset, enrichment still works but rate-limits faster.

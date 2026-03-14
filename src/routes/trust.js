@@ -2748,14 +2748,24 @@ export async function apiRecruiterUpload(request, env, jobId) {
 
   for (const file of files) {
     if (!file || file.type !== "application/pdf") continue;
-
+  
+    const buffer = await file.arrayBuffer();
+  
     const key = `recruiter_uploads/${jobId}/${crypto.randomUUID()}.pdf`;
-
+  
     await env.RESUME_BUCKET.put(
       key,
-      await file.arrayBuffer(),
+      buffer,
       { httpMetadata: { contentType: "application/pdf" } }
     );
+  
+    await env.RESUME_QUEUE.send({
+      jobId,
+      batchId,
+      r2Key: key,
+      filename: file.name,
+      candidateId: crypto.randomUUID()
+    });
   }
 
   return json({

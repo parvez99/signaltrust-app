@@ -79,7 +79,7 @@ import { renderAdminCandidates, renderAdminWaitlist, apiAdminCandidates } from "
 import {
   handleWaitlist, handleWaitlistCount
 } from "./routes/waitlist.js"
-
+import { runTrustPipeline } from "./engine/run_trust_pipeline.js";
 // All the routes under fetch() 
 export default {
   //Function to handle the incoming requests; Routing
@@ -292,6 +292,65 @@ export default {
       },
     });
   },
+  async queue(batch: MessageBatch<any>, env: Env) {
+    for (const msg of batch.messages) {
+      const { jobId, batchId, r2Key, filename, candidateId } = msg.body;
+  
+      console.log("QUEUE_MESSAGE_RECEIVED", msg.body);
+  
+      const obj = await env.RESUME_BUCKET.get(r2Key);
+      if (!obj) {
+        console.log("R2_OBJECT_MISSING", r2Key);
+        continue;
+      }
+  
+      const sourceText = await obj.text();
+  
+      const result = await runTrustPipeline({
+        candidateId,
+        sourceText,
+        sourceFilename: filename,
+        now: new Date().toISOString(),
+        env
+      });
+      const now = new Date().toISOString();
+
+      await env.DB.prepare(`
+        INSERT INTO candidates (id, job_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+      `)
+      .bind(candidateId, jobId, now, now)
+      .run();
+
+      await env.DB.prepare(`
+        INSERT INTO trust_reports (id, candidate_id, trust_score, trust_bucket, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `)
+      .bind(
+        crypto.randomUUID(),
+        candidateId,
+        result.scoring.trust_score,
+        result.scoring.bucket,
+        now
+      )
+      .run();
+
+      await env.DB.prepare(`
+        UPDATE processing_batches
+        SET processed_resumes = processed_resumes + 1
+        WHERE id = ?
+      `)
+      .bind(batchId)
+      .run();
+      console.log("PIPELINE_RESULT", result.scoring);
+  
+      await env.DB.prepare(`
+        UPDATE processing_batches
+        SET processed_resumes = processed_resumes + 1
+        WHERE id = ?
+      `).bind(batchId).run();
+    }
+  }
 };
 
 async function routeAfterLogin(request: Request, env: Env) {

@@ -19,3 +19,10 @@ MAINTENANCE_MODE = "true"
 [[r2_buckets]]
 binding = "RESUME_BUCKET"
 bucket_name = "signaltrust-resumes"
+
+[[queues.producers]]
+binding = "RESUME_QUEUE"
+queue = "signaltrust-resume-queue"
+
+[[queues.consumers]]
+queue = "signaltrust-resume-queue"
