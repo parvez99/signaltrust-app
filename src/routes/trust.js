@@ -11,7 +11,7 @@ import { safeJsonParse } from "../lib/utils.js";
 import { sha256Hex, normalizeForDocHash } from "../lib/crypto.js";
 import { consoleShell } from "../lib/console_ui.js";
 import { runTrustPipeline } from "../engine/run_trust_pipeline"
-
+import { createProcessingBatch } from "../db/batches.js";
 
 export async function renderTrustHome(request, env) {
     const sess = await requireSession(request, env);
@@ -2730,6 +2730,40 @@ export async function apiTrustUpload(request, env) {
   return json({ ok: true, file_key: key });
 }
 
+export async function apiRecruiterUpload(request, env, jobId) {
+  const sess = await requireSession(request, env);
+  if (!sess) return json({ error: "unauthorized" }, 401);
+
+  const allowed = isRecruiter(sess, env) || isAdmin(sess, env);
+  if (!allowed) return json({ error: "forbidden" }, 403);
+
+  const formData = await request.formData();
+  const files = formData.getAll("files");
+
+  if (!files || files.length === 0) {
+    return json({ error: "No files uploaded" }, 400);
+  }
+
+  const batchId = await createProcessingBatch(env.DB, jobId, files.length);
+
+  for (const file of files) {
+    if (!file || file.type !== "application/pdf") continue;
+
+    const key = `recruiter_uploads/${jobId}/${crypto.randomUUID()}.pdf`;
+
+    await env.RESUME_BUCKET.put(
+      key,
+      await file.arrayBuffer(),
+      { httpMetadata: { contentType: "application/pdf" } }
+    );
+  }
+
+  return json({
+    ok: true,
+    batch_id: batchId,
+    total: files.length
+  });
+}
 export async function apiTrustPdf(request, env) {
   const sess = await requireSession(request, env);
   if (!sess) return new Response("unauthorized", { status: 401 });

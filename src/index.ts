@@ -39,7 +39,8 @@ import {
   apiTrustEvaluationNormalized,
   apiTrustUpload,
   apiTrustPdf,
-  apiTrustAiSummary
+  apiTrustAiSummary,
+  apiRecruiterUpload,
 } from "./routes/trust.js";
 
 import { isRecruiter, isAdmin } from "./lib/session.js";
@@ -221,6 +222,10 @@ export default {
     if (path === "/api/trust/run" && request.method === "POST") return apiTrustRun(request, env);
     if (path === "/api/trust/report" && request.method === "GET") return apiTrustReport(request, env);
     if (path === "/api/trust/upload" && request.method === "POST") return apiTrustUpload(request, env);
+    if (url.pathname.startsWith("/api/jobs/") && url.pathname.endsWith("/upload")) {
+      const jobId = url.pathname.split("/")[3];
+      return apiRecruiterUpload(request, env, jobId);
+    }
     if (path === "/api/trust/pdf" && request.method === "GET") return apiTrustPdf(request, env);
     if (path === "/go" && request.method === "GET") return routeAfterLogin(request, env);
 

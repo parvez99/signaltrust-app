@@ -1,10 +1,11 @@
-import { json } from "../lib/http.js";
+import { json,redirect } from "../lib/http.js";
 import { requireSession } from "../lib/session.js";
 import { escapeHtml } from "../lib/http.js"
 import { pageShell } from "../lib/ui.js";
 import { isRecruiter } from "../lib/session.js";
 import { SESSION_COOKIE } from "../lib/constants.js";
 import { isAdmin } from "../lib/session.js";
+import { createProcessingBatch } from "../db/batches.js";
 
 export async function apiRecruiterCandidates(request, env) {
     const sess = await requireSession(request, env);
