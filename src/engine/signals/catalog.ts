@@ -2,6 +2,7 @@ import { SignalDefinition } from "./types";
 import { signalEmployerExistence } from "./employer_validation";
 import { signalClaimCorroborationCoverage } from "./claim_corroboration_coverage";
 import { signalInterviewWasteProbability } from "./interview_waste_probability";
+import { signalGithubIdentityMismatch } from "./github_identity_mismatch"
 // import { signalCertificationLifecycle } from "./certification_lifecycle";
 // import { signalInterviewWasteProbability } from "./interview_waste_probability";
 
@@ -17,5 +18,9 @@ export const SIGNAL_CATALOG: SignalDefinition[] = [
   {
     id: "interview_waste_probability",
     run: signalInterviewWasteProbability,
+  },
+  {
+    id: "github_identity_mismatch",
+    run: signalGithubIdentityMismatch,
   },
 ];
