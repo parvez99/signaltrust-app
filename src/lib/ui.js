@@ -40,12 +40,22 @@ export function baseStyles() {
     }
     a{color:var(--sea);text-decoration:none}
     a:hover{text-decoration:underline}
-    .wrap{max-width:980px;margin:0 auto;padding:28px 18px 60px;}
-    .nav{display:flex;align-items:center;justify-content:space-between;gap:14px;}
-    .brand{font-weight:900;letter-spacing:.2px}
+    .wrap{max-width:980px;margin:0 auto;padding:6px 18px 32px;}
+    .nav{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:14px;
+      margin-bottom:6px;
+    }
+    .brand{
+      font-weight:900;
+      letter-spacing:.3px;
+      font-size:18px;
+    }
     .pill{
-      font-size:12px;
-      padding:6px 10px;
+      font-size:11px;
+      padding:4px 8px;
       border:1px solid var(--border);
       border-radius:999px;
       color: var(--muted);
@@ -171,6 +181,51 @@ export function baseStyles() {
     border-color: rgba(0,167,167,.45);
     color: rgba(2,6,23,.88);
   }
+      /* SaaS table styling */
+    table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      font-size:14px;
+    }
+
+    thead th{
+      text-align:left;
+      font-size:12px;
+      font-weight:700;
+      color:rgba(15,23,42,.60);
+      letter-spacing:.04em;
+      padding:10px 12px;
+      border-bottom:1px solid var(--border);
+    }
+
+    tbody tr{
+      transition:background .15s ease, transform .08s ease;
+    }
+
+    tbody tr:hover{
+      background:rgba(0,167,167,.04);
+      transform:translateY(-1px);
+    }
+
+    tbody td{
+      padding:14px 12px;
+      border-bottom:1px solid rgba(15,23,42,.06);
+      vertical-align:middle;
+    }
+
+    tbody tr:last-child td{
+      border-bottom:none;
+    }
+    /* Premium score styling */
+    .score{
+      font-size:18px;
+      font-weight:800;
+      letter-spacing:-0.02em;
+    }
+    .score.green{ color:#15803d; }
+    .score.yellow{ color:#a16207; }
+    .score.red{ color:#b42318; }
     `;
 }
 
@@ -190,10 +245,15 @@ export function pageShell({ title, body, rightPill = "MVP • Early access", ful
   </head>
   <body>
     <div class="${wrapClass}">
-      <div class="nav">
-        <div class="brand"><a href="/" style="color:inherit;text-decoration:none">SignalTrust</a></div>
-        <div class="pill">${escapeHtml(rightPill)}</div>
-      </div>
+        <div class="nav">
+          <div class="brand">
+            <a href="/" style="color:inherit;text-decoration:none">SignalTrust</a>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:10px;">
+          ${rightPill ? `<div class="pill">${escapeHtml(rightPill)}</div>` : ``}
+          </div>
+        </div>
       ${body}
     </div>
   </body>

@@ -227,6 +227,13 @@ export async function renderTrustReportPage(request, env) {
 
             /* Make all grid/flex containers allow children to shrink */
             .row, .workspace, .workspace-main, .workspace-right { min-width: 0; }
+
+            /* Hide global header when report is inside modal */
+            .embedded-report header,
+            .embedded-report .console-header,
+            .embedded-report .console-topbar{
+              display:none !important;
+            }
           </style>
 
           <div class="doc-grid" id="docGrid">
@@ -324,7 +331,7 @@ export async function renderTrustReportPage(request, env) {
         <div class="row" style="margin-top:2px;">
           ${
             profileId
-              ? `<a class="btn btn-ghost" href="/trust/profile?id=${escapeHtml(profileId)}">← Back to Profile</a>`
+              ? `<button onclick="window.parent.closeReportModal()" class="btn btn-sm">← Back to Profiles</button>`
               : `<span class="fine">Missing profile id</span>`
           }
           <span class="spacer"></span>
@@ -672,6 +679,12 @@ export async function renderTrustReportPage(request, env) {
         </div>
 
         <script>
+          // Detect if this report page is opened inside the modal iframe
+          // detect modal embed
+          if (window.self !== window.top) {
+            document.documentElement.classList.add("embedded-report");
+            document.querySelector(".nav")?.remove();
+          }
           const reportId = ${JSON.stringify(id)};
           let __lastReport = null;
           let __lastSignals = [];
@@ -1257,7 +1270,17 @@ export async function renderTrustReportPage(request, env) {
               }
             }
           }
-
+          if (window.self !== window.top) {
+            const links = document.querySelectorAll("a[href]");
+            links.forEach(a => {
+              a.addEventListener("click", e => {
+                if (a.href.includes("/trust/profile")) {
+                  e.preventDefault();
+                  window.parent.closeReportModal();
+                }
+              });
+            });
+          }
           document.getElementById("refresh")?.addEventListener("click", load);
           load();
         </script>
@@ -1283,9 +1306,10 @@ export async function renderTrustProfilePage(request, env) {
   
     const who = escapeHtml(sess.google_name || sess.github_username || sess.email || sess.google_email || "Recruiter");
   
-    const html = pageShell({
-      title: "SignalTrust — Trust Profile",
-      rightPill: `Trust Engine • ${who}`,
+    const html = consoleShell({
+      title: "...",
+      who,
+      active: "profiles",
       body: `
         <style>
           .riskbar{
@@ -1480,13 +1504,11 @@ export async function renderTrustProfilesPage(request, env) {
         <div class="card">
             <div class="row" style="align-items:center;">
             <div>
-                <div class="fine">Last 20 ingests</div>
-                <h2 style="margin:6px 0 0;">Profiles</h2>
+                <h2 style="margin:2px 0 0;font-size:20px;">Trust Profiles</h2>
             </div>
             <span class="spacer"></span>
 
             <div class="row" style="gap:8px;">
-                <a class="btn btn-sm" href="/trust">Upload</a>
                 <button class="btn btn-sm" id="refresh" type="button">Refresh</button>
             </div>
             </div>
@@ -1669,7 +1691,188 @@ export async function renderTrustProfilesPage(request, env) {
             .active-chip:hover{
                 background: rgba(0,170,170,.16);
             }
+            .leaderboard-table{
+              width:100%;
+              border-collapse:collapse;
+              margin-top:8px;
+            }
 
+            .leaderboard-table th{
+              text-align:left;
+              padding:10px 12px;
+              font-size:13px;
+              color:var(--muted);
+              border-bottom:1px solid var(--border);
+            }
+
+            .leaderboard-table td{
+              padding:10px 10px;
+              border-bottom:1px solid var(--border);
+              vertical-align:middle;
+            }
+            .leaderboard-row{
+              display:grid;
+              grid-template-columns:80px 120px 1fr 120px 100px 90px;
+              align-items:center;
+              gap:12px;
+              padding:14px 10px;
+              border-top:1px solid var(--border);
+            }
+
+            .score-col{
+              font-size:22px;
+              font-weight:700;
+              letter-spacing:-0.02em;
+            }
+
+            .score-green{
+              color:#1a7f4b;
+            }
+
+            .score-yellow{
+              color:#a16207;
+            }
+
+            .score-red{
+              color:#b91c1c;
+            }
+
+            .candidate-name{
+              font-weight:700;
+              font-size:15px;
+            }
+
+            .signals-col{
+              font-size:13px;
+              color:rgba(11,18,32,.75);
+            }
+            .risk-badge{
+              font-size:12px;
+              padding:3px 8px;
+            }
+            .uploads-col{
+              width:90px;
+            }
+            .leaderboard-table td:last-child{
+              width:110px;
+            }
+            .leaderboard-table tbody tr{
+              cursor:pointer;
+            }
+            .leaderboard-table tbody tr:hover{
+              background:rgba(18,187,191,.06);
+            }
+            .rank-col{
+              width:50px;
+              font-size:20px;
+            }
+            .leaderboard-table thead th{
+              font-size:12px;
+              letter-spacing:.04em;
+              color:rgba(11,18,32,.6);
+              font-weight:600;
+            }
+            .rank-badge{
+              width:26px;
+              height:26px;
+              border-radius:50%;
+              display:flex;
+              align-items:center;
+              justify-content:center;
+              background:rgba(15,23,42,.06);
+              font-weight:700;
+              font-size:12px;
+            }
+
+            .rank-1{
+              background:#fde68a;
+            }
+
+            .rank-2{
+              background:#e5e7eb;
+            }
+
+            .rank-3{
+              background:#fcd34d;
+            }
+
+            .rank-other{
+              background:rgba(11,18,32,.08);
+            }
+            td div:first-child {
+              font-weight:700;
+            }
+            .insights-bar{
+              display:flex;
+              gap:12px;
+              margin:14px 0 18px 0;
+              flex-wrap:wrap;
+            }
+
+            .insight-pill{
+              padding:8px 12px;
+              border-radius:10px;
+              font-size:13px;
+              background:rgba(11,18,32,.05);
+              border:1px solid rgba(11,18,32,.08);
+            }
+            .rank-col{
+              width:32px;
+              text-align:center;
+              font-size:14px;
+            }
+            .report-modal{
+              position:fixed;
+              inset:0;
+              background:rgba(0,0,0,.35);
+              backdrop-filter: blur(3px);
+              display:none;
+              align-items:center;
+              justify-content:center;
+              z-index:999;
+            }
+
+            .report-modal-content{
+              width:92%;
+              height:92%;
+              background:white;
+              border-radius:16px;
+              overflow:hidden;
+              display:flex;
+              flex-direction:column;
+              box-shadow:0 30px 80px rgba(0,0,0,.35);
+              transform: translateY(10px) scale(.98);
+              opacity:0;
+              transition: all .18s ease;
+            }
+
+            .report-modal-header{
+              padding:12px 16px;
+              border-bottom:1px solid var(--border);
+              display:flex;
+              justify-content:space-between;
+              align-items:center;
+              font-weight:600;
+            }
+
+            .report-frame{
+              flex:1;
+              width:100%;
+              border:0;
+            }
+            .signal-preview{
+              font-size:12px;
+              font-weight:600;
+              margin-right:6px;
+            }
+
+            .signal-preview.ok{
+              color:#1a7f4b;
+            }
+
+            .signal-preview.red{
+              color:#b42318;
+            }
           </style>
             <div class="filter-bar">
                 <!-- LEFT: buckets + filter controls -->
@@ -1740,11 +1943,131 @@ export async function renderTrustProfilesPage(request, env) {
                 </div>
             </div> <!-- END of FILTER Group -->
         </div> <!-- END of BODY -->
+        <div id="insightsBar" class="insights-bar"></div>
         <div id="listWrap">
-            <div id="list" class="fine">Loading…</div>
+
+          <table class="leaderboard-table">
+            <thead>
+              <tr onclick="location.href='/trust/profile?id=' + item.id">
+                <th class="rank-col">Rank</th>
+                <th class="score-col" onclick="toggleScoreSort()" style="cursor:pointer;" id="scoreHeader">
+                  Score ↓
+                </th>
+                <th>Risk</th>
+                <th>Candidate</th>
+                <th class="signals-col">Signals</th>
+                <th class="uploads-col">Uploaded</th>
+                <th></th>
+              </tr>
+            </thead>
+
+            <tbody id="list">
+              <tr>
+                <td colspan="6" class="fine">Loading…</td>
+              </tr>
+            </tbody>
+
+          </table>
+
         </div>
 
         <script>
+          function renderSignalPreview(signals){
+
+            const signalLabels = {
+              timeline_overlap: "Overlapping Roles",
+              gap_gt_6mo: "Unexplained Gap > 6 Months",
+              gap_after_edu_to_first_role: "Gap after Education Before First Role",
+              duplicate_roles: "Duplicate Role Entries",
+              duplicate_resume_upload: "Duplicate Resume Upload",
+              career_velocity: "Career Velocity Anomaly",
+              github_public_activity: "GitHub Activity Evidence",
+              github_public_claim_match: "GitHub Skill Plausibility Match",
+              github_identity_mismatch: "GitHub Identity Mismatch",
+              employer_existence_validation: "Employer Existence Validation",
+              claim_corroboration_coverage: "Claim Corroboration Coverage"
+            };
+
+            if (!signals || !signals.length) {
+              return '<span class="signal-preview ok">✓ Clean</span>';
+            }
+
+            return signals.slice(0,2).map(id => {
+
+              const label = signalLabels[id] || id.replace(/_/g, " ");
+
+              const severityColor =
+                id.includes("mismatch") ||
+                id.includes("gap") ||
+                id.includes("overlap")
+                  ? "#b42318"
+                  : "#6b7280";
+
+              return '<span style="color:' + severityColor + '">⚠ ' + label + '</span>';
+
+            }).join(" ");
+          }
+          
+          function openQuickReport(reportId){
+            const modal = document.getElementById("reportModal");
+            const frame = document.getElementById("reportFrame");
+            const content = modal.querySelector(".report-modal-content");
+
+            frame.src = "/trust/report?id=" + reportId;
+
+            modal.style.display = "flex";
+
+            requestAnimationFrame(()=>{
+              content.style.transform = "translateY(0) scale(1)";
+              content.style.opacity = "1";
+            });
+          }
+
+          function closeReportModal(){
+            const modal = document.getElementById("reportModal");
+            const frame = document.getElementById("reportFrame");
+            const content = modal.querySelector(".report-modal-content");
+
+            content.style.transform = "translateY(10px) scale(.98)";
+            content.style.opacity = "0";
+
+            setTimeout(()=>{
+              frame.src = "";
+              modal.style.display = "none";
+            },150);
+          }
+          function renderInsights(items) {
+            const el = document.getElementById("insightsBar");
+            if (!el) return;
+
+            let totalSignals = 0;
+            let riskyCandidates = 0;
+
+            items.forEach(item => {
+              const count = item?.latest_report?.triggered_count || 0;
+              if (count > 0) {
+                totalSignals += count;
+                riskyCandidates += 1;
+              }
+            });
+
+            let html = "";
+
+            if (totalSignals > 0) {
+              html += '<div class="insight-pill">⚠ ' + totalSignals + ' total signals detected</div>';
+              html += '<div class="insight-pill">⚠ ' + riskyCandidates + ' candidates need review</div>';
+            } else {
+              html = '<div class="insight-pill">✔ No major risk signals detected</div>';
+            }
+
+            el.innerHTML = html;
+          }
+          function toggleScoreSort() {
+            scoreSortDirection = scoreSortDirection === "desc" ? "asc" : "desc";
+            document.getElementById("scoreHeader").textContent =
+              scoreSortDirection === "desc" ? "Score ↓" : "Score ↑";
+            render();
+          }
           function esc(s) {
             return String(s || "")
               .replaceAll("&", "&amp;")
@@ -1786,16 +2109,17 @@ export async function renderTrustProfilesPage(request, env) {
             return pill(b, "rgba(11,18,32,.06)", "var(--border)", "var(--muted)");
           }
   
-        function togglePanel(id) {
+            
+          function togglePanel(id) {
             const panels = ["panelScore", "panelSignals", "panelMore"];
             for (const p of panels) {
-                const el = document.getElementById(p);
-                if (!el) continue;
+              const el = document.getElementById(p);
+              if (!el) continue;
                 el.style.display = (p === id && el.style.display === "none") ? "block" : "none";
             }
-            }
+          }
 
-            function renderActiveFilters() {
+          function renderActiveFilters() {
             const el = document.getElementById("activeFilters");
             if (!el) return;
 
@@ -1825,9 +2149,9 @@ export async function renderTrustProfilesPage(request, env) {
                 render();
                 });
             });
-            }
+          }
 
-            function syncMiniChipStates() {
+          function syncMiniChipStates() {
             // score chips
             document.querySelectorAll('.mini-chip[data-score]').forEach(b => {
                 b.dataset.active = (b.dataset.score === state.score) ? "1" : "0";
@@ -1843,7 +2167,7 @@ export async function renderTrustProfilesPage(request, env) {
             });
 
             renderActiveFilters();
-        }
+          }
 
           async function readJson(res) {
             const ct = res.headers.get("content-type") || "";
@@ -1858,11 +2182,11 @@ export async function renderTrustProfilesPage(request, env) {
   
           function row(item) {
             const latest = item.latest_report;
-  
+
             const dupPill = hasSignal(item, "duplicate_resume_upload")
               ? pill("Duplicate upload", "rgba(245,158,11,.12)", "rgba(245,158,11,.28)", "#8a5a00")
               : "";
-  
+
             const latestHtml = latest
               ? '<div class="row" style="gap:8px; flex-wrap:wrap;">' +
                   bucketBadge(latest.bucket) +
@@ -1873,23 +2197,50 @@ export async function renderTrustProfilesPage(request, env) {
                   pill('Uploads: ' + (item.ingest_count || 1), "rgba(11,18,32,.06)", "var(--border)", "var(--muted)") +
                 '</div>'
               : '<div class="fine">No reports yet</div>';
-  
+            const rank = item.rank || "";
+            const scoreClass =
+            latest?.bucket === "green"
+              ? "score-green"
+              : latest?.bucket === "yellow"
+              ? "score-yellow"
+              : "score-red";
             return (
-              '<div style="padding:12px; border:1px solid var(--border); border-radius:16px; background:rgba(255,255,255,.92); box-shadow:0 8px 20px rgba(11,18,32,.06);">' +
-                '<div class="row" style="justify-content:space-between; gap:10px; align-items:flex-start;">' +
-                  '<div>' +
-                    '<div style="font-weight:900;">' + esc(item.filename || item.id) + '</div>' +
-                    '<div class="fine">Created: ' + esc(item.created_at) + ' • Source: ' + esc(item.source_type) + ' • Extractor: ' + esc(item.extractor) + '</div>' +
-                    '<div style="margin-top:8px;">' + latestHtml + '</div>' +
-                  '</div>' +
-                  '<div class="row" style="gap:8px;">' +
-                    '<a class="btn" href="/trust/profile?id=' + encodeURIComponent(item.id) + '">Open</a>' +
-                  '</div>' +
-                '</div>' +
-              '</div>'
+              '<tr data-report="' + esc(latest.id) + '" onclick="openQuickReport(this.dataset.report)" style="cursor:pointer;">' +
+
+                '<td class="rank-col">' +
+                  '<span class="rank-badge rank-other">' + rank + '</span>' +
+                '</td>' +
+
+                '<td class="score ' + scoreClass + '">' +
+                  (latest ? latest.trust_score : '-') +
+                '</td>' +
+
+                '<td>' +
+                  (latest ? bucketBadge(latest.bucket) : '') +
+                '</td>' +
+
+                '<td class="candidate">' +
+                  '<div style="font-weight:700">' + esc(item.candidate_name || item.filename || item.id) + '</div>' +
+                  (
+                    item.candidate_name && item.filename
+                      ? '<div class="fine">' + esc(item.filename) + '</div>'
+                      : ''
+                  ) +
+                '</td>' +
+
+                '<td class="signals-col">' +
+                  renderSignalPreview(latest.signal_ids || []) +
+                '</td>' +
+
+                '<td class="uploads-col">' +
+                  (item.ingest_count || 1) +
+                '</td>' +
+                '<td class="fine">Open</td>' +
+
+              '</tr>'
             );
           }
-  
+        let scoreSortDirection = "desc";
         let allItems = [];
         let state = {
         bucket: "all",   // all | green | yellow | red
@@ -1932,16 +2283,24 @@ export async function renderTrustProfilesPage(request, env) {
         }
 
         function render() {
-        const el = document.getElementById("list");
-        const items = applyFilters(allItems);
-        el.innerHTML = items.length
-            ? '<div style="display:grid; grid-template-columns: 1fr; gap:10px;">' + items.map(row).join("") + '</div>'
-            : '<div class="fine">No matches.</div>';
+          const el = document.getElementById("list");
 
-        const s = document.getElementById("filterSummary");
-        if (s) s.textContent = items.length + "/" + allItems.length;
+          const items = applyFilters(allItems)
+            .sort((a, b) => {
+              const aScore = a.latest_report?.trust_score || 0;
+              const bScore = b.latest_report?.trust_score || 0;
+              return scoreSortDirection === "desc" ? bScore - aScore : aScore - bScore;
+            })
+            .map((item, index) => ({ ...item, rank: index + 1 }));
+          renderInsights(items);
+          el.innerHTML = items.length
+            ? items.map(row).join("")
+            : '<tr><td colspan="7" class="fine">No matches.</td></tr>';
 
-        renderActiveFilters();
+          const s = document.getElementById("filterSummary");
+          if (s) s.textContent = items.length + "/" + allItems.length;
+
+          renderActiveFilters();
         }
 
         async function load() {
@@ -2039,6 +2398,18 @@ export async function renderTrustProfilesPage(request, env) {
         syncMiniChipStates();
         load();
     </script>
+    <div id="reportModal" class="report-modal">
+      <div class="report-modal-content">
+
+        <div class="report-modal-header">
+          <span>Candidate Report</span>
+          <button onclick="closeReportModal()" class="btn btn-sm">Close</button>
+        </div>
+
+        <iframe id="reportFrame" src="" class="report-frame"></iframe>
+
+      </div>
+    </div>
             `
     });
   

@@ -34,7 +34,7 @@ export function consoleShell({
 
   return pageShell({
     title,
-    rightPill: `Trust Engine • ${name}`,
+    rightPill: "",
     fullWidth: true,
     body: `
       <style>
@@ -53,7 +53,7 @@ export function consoleShell({
           display: grid;
           grid-template-columns: 72px 1fr;
           gap: 14px;
-          margin-top: 14px;
+          margin-top: 4px;
           align-items: start;
           transition: grid-template-columns .16s ease;
         }
@@ -85,10 +85,15 @@ export function consoleShell({
           min-height: 36px;
         }
         .brand-mark{
-          width: 30px;
-          height: 30px;
-          border-radius: 10px;
-          font-size: 13px;
+          width:28px;
+          height:28px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          border-radius:8px;
+          font-weight:800;
+          font-size:12px;
+          background:rgba(11,18,32,.06);
         }
         .brand-text{
           display:flex;
@@ -190,13 +195,13 @@ export function consoleShell({
           display:flex;
           align-items:center;
           gap: 10px;
-          margin-bottom: 12px;
+          margin-bottom: 6px;
           position: sticky;
-          top: 14px;
+          top: 8px;
           z-index: 5;
           background: rgba(246,251,251,.78);
           backdrop-filter: blur(6px);
-          padding: 10px 10px;
+          padding:8px 10px;
           border-radius: 16px;
           border: 1px solid var(--border);
         }
@@ -206,7 +211,9 @@ export function consoleShell({
           color: rgba(11,18,32,.62);
           font-weight: 700;
         }
-
+        .content-topbar .pill{
+          margin-right:6px;
+        }
         /* Main area modes */
         .main-single{
           min-width: 0;
@@ -255,6 +262,9 @@ export function consoleShell({
           .main-workspace{ grid-template-columns: 1fr; }
           .pane-body{ max-height: none; }
         }
+        .embedded-report .upload-btn{
+          display:none !important;
+        }
       </style>
 
       <div class="console-wrap">
@@ -265,7 +275,7 @@ export function consoleShell({
                 <div class="brand-mark">ST</div>
                 <div class="brand-text">
                   <div class="brand-title">SignalTrust</div>
-                  <div class="brand-sub">Recruiter Console</div>
+                  <div class="brand-sub">AI Hiring Intelligence</div>
                 </div>
               </div>
 
@@ -290,7 +300,7 @@ export function consoleShell({
             <div class="content-topbar">
               <div class="content-title">${escapeHtml(title || "")}</div>
               <span class="spacer"></span>
-              <a class="btn btn-primary" href="/trust">Upload</a>
+              ${mode !== "workspace" ? '<a class="btn btn-primary" href="/trust">Upload</a>' : ''}
             </div>
 
             ${
