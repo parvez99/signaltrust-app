@@ -41,6 +41,8 @@ import {
   apiTrustPdf,
   apiTrustAiSummary,
   apiRecruiterUpload,
+  apiJobCandidates,
+  apiJobStats,
 } from "./routes/trust.js";
 
 import { isRecruiter, isAdmin } from "./lib/session.js";
@@ -225,6 +227,14 @@ export default {
     if (url.pathname.startsWith("/api/jobs/") && url.pathname.endsWith("/upload")) {
       const jobId = url.pathname.split("/")[3];
       return apiRecruiterUpload(request, env, jobId);
+    }
+    if (url.pathname.startsWith("/api/jobs/") && url.pathname.endsWith("/candidates")) {
+      const jobId = url.pathname.split("/")[3];
+      return apiJobCandidates(request, env, jobId);
+    }
+    if (url.pathname.startsWith("/api/jobs/") && url.pathname.endsWith("/stats")) {
+      const jobId = url.pathname.split("/")[3];
+      return apiJobStats(request, env, jobId);
     }
     if (path === "/api/trust/pdf" && request.method === "GET") return apiTrustPdf(request, env);
     if (path === "/go" && request.method === "GET") return routeAfterLogin(request, env);

@@ -2996,3 +2996,51 @@ export async function apiTrustAiSummary(request, env) {
 
   return json({ summary, cached: false });
 }
+
+export async function apiJobCandidates(request, env, jobId) {
+
+  const rows = await env.DB.prepare(`
+    SELECT
+      tr.trust_profile_id,
+      tr.trust_score,
+      tr.bucket,
+      tr.created_at
+    FROM trust_reports tr
+    JOIN trust_candidate_profiles tcp
+      ON tcp.id = tr.trust_profile_id
+    JOIN candidates c
+      ON c.id = tcp.created_by_candidate_id
+    WHERE c.job_id = ?
+    ORDER BY tr.trust_score DESC
+    LIMIT 50
+  `)
+  .bind(jobId)
+  .all();
+
+  return new Response(JSON.stringify({
+    ok: true,
+    candidates: rows.results
+  }), {
+    headers: { "content-type": "application/json" }
+  });
+}
+
+export async function apiJobStats(request, env, jobId) {
+
+  const rows = await env.DB.prepare(`
+    SELECT
+      COUNT(*) as total,
+      SUM(CASE WHEN bucket='green' THEN 1 ELSE 0 END) as green,
+      SUM(CASE WHEN bucket='yellow' THEN 1 ELSE 0 END) as yellow,
+      SUM(CASE WHEN bucket='red' THEN 1 ELSE 0 END) as red,
+      AVG(trust_score) as avg_score
+    FROM trust_reports
+  `).first();
+
+  return new Response(JSON.stringify({
+    ok: true,
+    stats: rows
+  }), {
+    headers: { "content-type": "application/json" }
+  });
+}
