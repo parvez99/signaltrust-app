@@ -1,0 +1,1 @@
+ALTER TABLE trust_reports ADD COLUMN candidate_id TEXT;

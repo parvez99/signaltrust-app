@@ -214,7 +214,6 @@ export default {
       return apiRecruiterIntroRequestStatus(request, env);
     }
 
-    if (path === "/trust" && request.method === "GET") return renderTrustHome(request, env);
     if (path === "/trust/report" && request.method === "GET") return renderTrustReportPage(request, env);
     if (path === "/trust/profiles" && request.method === "GET") return renderTrustProfilesPage(request, env);
     if (path === "/trust/profile" && request.method === "GET") return renderTrustProfilePage(request, env);
@@ -224,9 +223,8 @@ export default {
     if (path === "/api/trust/run" && request.method === "POST") return apiTrustRun(request, env);
     if (path === "/api/trust/report" && request.method === "GET") return apiTrustReport(request, env);
     if (path === "/api/trust/upload" && request.method === "POST") return apiTrustUpload(request, env);
-    if (url.pathname.startsWith("/api/jobs/") && url.pathname.endsWith("/upload")) {
-      const jobId = url.pathname.split("/")[3];
-      return apiRecruiterUpload(request, env, jobId);
+    if (url.pathname === "/api/recruiter/upload" && request.method === "POST") {
+      return apiRecruiterUpload(request, env);
     }
     if (url.pathname.startsWith("/api/jobs/") && url.pathname.endsWith("/candidates")) {
       const jobId = url.pathname.split("/")[3];
@@ -251,7 +249,7 @@ export default {
     if (path === "/api/trust/evaluation/normalized" && request.method === "GET") {
       return apiTrustEvaluationNormalized(request, env);
     }
-
+    if (path === "/trust" && request.method === "GET") return renderTrustHome(request, env);
     if (path === "/api/debug/colo" && request.method === "GET") {
       return Response.json({
         cf: (request as any).cf ?? null,
@@ -308,57 +306,135 @@ export default {
   
       console.log("QUEUE_MESSAGE_RECEIVED", msg.body);
   
-      const obj = await env.RESUME_BUCKET.get(r2Key);
-      if (!obj) {
-        console.log("R2_OBJECT_MISSING", r2Key);
-        continue;
+      try {
+        const obj = await env.RESUME_BUCKET.get(r2Key);
+  
+        if (!obj) {
+          console.error("R2_OBJECT_MISSING", r2Key);
+          continue;
+        }
+  
+        // NOTE: for now we read text directly
+        // later we will replace with PDF extraction service
+        const sourceText = await obj.text();
+  
+        const now = new Date().toISOString();
+  
+        const result = await runTrustPipeline({
+          candidateId,
+          sourceText,
+          sourceFilename: filename,
+          now,
+          env
+        });
+  
+        console.log("PIPELINE_RESULT", result.scoring);
+  
+        // ---- Candidate record (idempotent) ----
+        await env.DB.prepare(`
+          INSERT OR IGNORE INTO candidates
+          (id, job_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?)
+        `)
+        .bind(candidateId, jobId, now, now)
+        .run();
+
+        console.log("CREATING TRUST PROFILE", candidateId);
+
+        await env.DB.prepare(`
+          INSERT INTO trust_candidate_profiles (
+            id,
+            created_by_candidate_id,
+            source_type,
+            normalized_json,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO NOTHING
+        `)
+        .bind(
+          candidateId,
+          candidateId,
+          "resume_upload", // or "pdf_upload" (your choice)
+          JSON.stringify(result.llmNormalizedProfile || result.deterministicProfile || {}),
+          now,
+          now
+        )
+        .run();
+        
+        const profile = await env.DB.prepare(`
+          SELECT id FROM trust_candidate_profiles WHERE id = ?
+        `)
+        .bind(candidateId)
+        .first();
+        
+        console.log("TRUST_PROFILE_EXISTS", profile);
+        
+        if (!profile) {
+          throw new Error("FAILED_TO_CREATE_TRUST_PROFILE");
+        }
+        // ---- Trust report ----
+        await env.DB.prepare(`
+          INSERT INTO trust_reports (
+            id,
+            trust_profile_id,
+            candidate_id,
+            trust_score,
+            bucket,
+            hard_triggered,
+            summary_json,
+            engine_version,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        .bind(
+          crypto.randomUUID(),
+          candidateId, // trust_profile_id
+          candidateId,
+          result.scoring.trust_score,
+          result.scoring.bucket,
+          result.scoring.hard_triggered ? 1 : 0,
+          JSON.stringify(result.scoring?.summary || {}), // ✅ REQUIRED
+          result.engineVersion || "trust_engine_v1_mvp",                // ✅ REQUIRED
+          now
+        )
+        .run();
+  
+        // ---- Update batch progress ----
+        await env.DB.prepare(`
+          UPDATE processing_batches
+          SET processed_resumes = processed_resumes + 1
+          WHERE id = ?
+        `)
+        .bind(batchId)
+        .run();
+  
+        // ---- Check if batch finished ----
+        const batchRow = await env.DB.prepare(`
+          SELECT total_resumes, processed_resumes
+          FROM processing_batches
+          WHERE id = ?
+        `)
+        .bind(batchId)
+        .first();
+  
+        if (batchRow && batchRow.total_resumes === batchRow.processed_resumes) {
+          console.log("BATCH_COMPLETED", batchId);
+  
+          await env.DB.prepare(`
+            UPDATE processing_batches
+            SET status = 'completed'
+            WHERE id = ?
+          `)
+          .bind(batchId)
+          .run();
+        }
+  
+      } catch (err) {
+        console.error("QUEUE_PROCESSING_ERROR", err);
       }
-  
-      const sourceText = await obj.text();
-  
-      const result = await runTrustPipeline({
-        candidateId,
-        sourceText,
-        sourceFilename: filename,
-        now: new Date().toISOString(),
-        env
-      });
-      const now = new Date().toISOString();
-
-      await env.DB.prepare(`
-        INSERT INTO candidates (id, job_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?)
-      `)
-      .bind(candidateId, jobId, now, now)
-      .run();
-
-      await env.DB.prepare(`
-        INSERT INTO trust_reports (id, candidate_id, trust_score, trust_bucket, created_at)
-        VALUES (?, ?, ?, ?, ?)
-      `)
-      .bind(
-        crypto.randomUUID(),
-        candidateId,
-        result.scoring.trust_score,
-        result.scoring.bucket,
-        now
-      )
-      .run();
-
-      await env.DB.prepare(`
-        UPDATE processing_batches
-        SET processed_resumes = processed_resumes + 1
-        WHERE id = ?
-      `)
-      .bind(batchId)
-      .run();
-      console.log("PIPELINE_RESULT", result.scoring);
-  
-      await env.DB.prepare(`
-        UPDATE processing_batches
-        SET processed_resumes = processed_resumes + 1
-        WHERE id = ?
-      `).bind(batchId).run();
     }
   }
 };

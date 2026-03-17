@@ -3101,7 +3101,9 @@ export async function apiTrustUpload(request, env) {
   return json({ ok: true, file_key: key });
 }
 
-export async function apiRecruiterUpload(request, env, jobId) {
+export async function apiRecruiterUpload(request, env) {
+  console.log("UPLOAD API HIT");
+
   const sess = await requireSession(request, env);
   if (!sess) return json({ error: "unauthorized" }, 401);
 
@@ -3115,36 +3117,74 @@ export async function apiRecruiterUpload(request, env, jobId) {
     return json({ error: "No files uploaded" }, 400);
   }
 
+  const now = new Date().toISOString();
+
+  // ✅ Generate jobId HERE (important)
+  const jobId = crypto.randomUUID();
+
+  // ✅ Create job row (required for FK)
+  await env.DB.prepare(`
+    INSERT INTO jobs (
+      id,
+      title,
+      company,
+      location,
+      source,
+      job_url,
+      created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `)
+    .bind(
+      jobId,
+      "Bulk Upload Job",
+      null,
+      null,
+      "manual",
+      null,
+      now
+    )
+    .run();
+
+  // ✅ Create batch
   const batchId = await createProcessingBatch(env.DB, jobId, files.length);
+
+  const uploaded = [];
 
   for (const file of files) {
     if (!file || file.type !== "application/pdf") continue;
-  
+
     const buffer = await file.arrayBuffer();
-  
-    const key = `recruiter_uploads/${jobId}/${crypto.randomUUID()}.pdf`;
-  
-    await env.RESUME_BUCKET.put(
-      key,
-      buffer,
-      { httpMetadata: { contentType: "application/pdf" } }
-    );
-  
+    const candidateId = crypto.randomUUID();
+    const r2Key = `jobs/${jobId}/${candidateId}_${file.name}`;
+
+    await env.RESUME_BUCKET.put(r2Key, buffer, {
+      httpMetadata: { contentType: file.type }
+    });
+
     await env.RESUME_QUEUE.send({
       jobId,
       batchId,
-      r2Key: key,
+      candidateId,
       filename: file.name,
-      candidateId: crypto.randomUUID()
+      r2Key
+    });
+
+    uploaded.push({
+      candidateId,
+      filename: file.name
     });
   }
 
   return json({
-    ok: true,
-    batch_id: batchId,
-    total: files.length
+    success: true,
+    jobId,
+    batchId,
+    total: uploaded.length,
+    uploaded
   });
 }
+
 export async function apiTrustPdf(request, env) {
   const sess = await requireSession(request, env);
   if (!sess) return new Response("unauthorized", { status: 401 });
