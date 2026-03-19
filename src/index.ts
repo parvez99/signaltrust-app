@@ -43,6 +43,7 @@ import {
   apiRecruiterUpload,
   apiJobCandidates,
   apiJobStats,
+  apiBatchStatus
 } from "./routes/trust.js";
 
 import { isRecruiter, isAdmin } from "./lib/session.js";
@@ -223,6 +224,10 @@ export default {
     if (path === "/api/trust/run" && request.method === "POST") return apiTrustRun(request, env);
     if (path === "/api/trust/report" && request.method === "GET") return apiTrustReport(request, env);
     if (path === "/api/trust/upload" && request.method === "POST") return apiTrustUpload(request, env);
+    if (url.pathname.startsWith("/api/batches/")) {
+      const batchId = url.pathname.split("/")[3];
+      return apiBatchStatus(request, env, batchId);
+    }
     if (url.pathname === "/api/recruiter/upload" && request.method === "POST") {
       return apiRecruiterUpload(request, env);
     }
@@ -303,33 +308,61 @@ export default {
   async queue(batch: MessageBatch<any>, env: Env) {
     for (const msg of batch.messages) {
       const { jobId, batchId, r2Key, filename, candidateId } = msg.body;
-  
+      type PipelineResult = Awaited<ReturnType<typeof runTrustPipeline>>;
       console.log("QUEUE_MESSAGE_RECEIVED", msg.body);
-  
+
+      await env.DB.prepare(`
+        UPDATE candidates
+        SET processing_status = 'processing',
+            processing_error = NULL
+        WHERE id = ?
+      `)
+      .bind(candidateId)
+      .run();
+
       try {
         const obj = await env.RESUME_BUCKET.get(r2Key);
   
         if (!obj) {
           console.error("R2_OBJECT_MISSING", r2Key);
+        
+          await env.DB.prepare(`
+            UPDATE processing_batches
+            SET processed_resumes = processed_resumes + 1
+            WHERE id = ?
+          `)
+          .bind(batchId)
+          .run();
+        
           continue;
         }
   
         // NOTE: for now we read text directly
         // later we will replace with PDF extraction service
-        const sourceText = await obj.text();
+        const sourceText = String(msg.body.extractedText || "");
+        console.log("SOURCE_TEXT_SAMPLE", sourceText.slice(0, 200));
   
         const now = new Date().toISOString();
   
-        const result = await runTrustPipeline({
-          candidateId,
-          sourceText,
-          sourceFilename: filename,
-          now,
-          env
-        });
+        console.log("PIPELINE_START", candidateId);
+
+        const result = await Promise.race<PipelineResult>([
+          runTrustPipeline({
+            candidateId,
+            sourceText,
+            sourceFilename: filename,
+            now,
+            env
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("PIPELINE_TIMEOUT")), 20000)
+          )
+        ]);
+
+        console.log("PIPELINE_DONE", candidateId);
   
-        console.log("PIPELINE_RESULT", result.scoring);
-  
+        console.log("PIPELINE_RESULT", result);
+        console.log("SOURCE_TEXT_SAMPLE", sourceText.slice(0, 200));
         // ---- Candidate record (idempotent) ----
         await env.DB.prepare(`
           INSERT OR IGNORE INTO candidates
@@ -346,25 +379,42 @@ export default {
             id,
             created_by_candidate_id,
             source_type,
+            source_filename,
+            source_text,
             normalized_json,
+            source_file_key,
             created_at,
-            updated_at
+            updated_at,
+            extractor
           )
-          VALUES (?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO NOTHING
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            source_type = excluded.source_type,
+            source_filename = excluded.source_filename,
+            source_text = excluded.source_text,
+            normalized_json = excluded.normalized_json,
+            source_file_key = excluded.source_file_key,
+            updated_at = excluded.updated_at,
+            extractor = excluded.extractor
         `)
         .bind(
           candidateId,
           candidateId,
-          "resume_upload", // or "pdf_upload" (your choice)
+          "pdf",
+          filename,
+          sourceText,
           JSON.stringify(result.llmNormalizedProfile || result.deterministicProfile || {}),
+          r2Key,
           now,
-          now
+          now,
+          result.extractionSource || "queue_pipeline"
         )
         .run();
         
         const profile = await env.DB.prepare(`
-          SELECT id FROM trust_candidate_profiles WHERE id = ?
+          SELECT id, source_filename
+          FROM trust_candidate_profiles
+          WHERE id = ?
         `)
         .bind(candidateId)
         .first();
@@ -374,7 +424,19 @@ export default {
         if (!profile) {
           throw new Error("FAILED_TO_CREATE_TRUST_PROFILE");
         }
+
         // ---- Trust report ----
+        const scoring = result.scoring || result;
+
+        console.log("CREATING TRUST REPORT", {
+          candidateId,
+          scoring
+        });
+
+        // ✅ STEP 1: create reportId FIRST
+        const reportId = crypto.randomUUID();
+
+        // ✅ STEP 2: insert trust_report
         await env.DB.prepare(`
           INSERT INTO trust_reports (
             id,
@@ -390,18 +452,62 @@ export default {
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .bind(
-          crypto.randomUUID(),
-          candidateId, // trust_profile_id
+          reportId,
           candidateId,
-          result.scoring.trust_score,
-          result.scoring.bucket,
-          result.scoring.hard_triggered ? 1 : 0,
-          JSON.stringify(result.scoring?.summary || {}), // ✅ REQUIRED
-          result.engineVersion || "trust_engine_v1_mvp",                // ✅ REQUIRED
+          candidateId,
+          scoring.trust_score || 0,
+          scoring.bucket || "green",
+          scoring.hard_triggered ? 1 : 0,
+          JSON.stringify(scoring.summary || {
+            tier_a_count: 0,
+            tier_b_count: 0,
+            tier_c_count: 0
+          }),
+          result.engineVersion || "trust_engine_v1_mvp",
           now
         )
         .run();
-  
+
+        console.log("TRUST REPORT CREATED", reportId);
+
+        // ✅ STEP 3: NOW insert signals (CORRECT PLACE)
+        for (const sig of result.triggeredSignals || []) {
+          await env.DB.prepare(`
+            INSERT INTO trust_signals (
+              id,
+              trust_report_id,
+              signal_id,
+              category,
+              severity_tier,
+              confidence,
+              deduction,
+              hard_trigger,
+              status,
+              evidence_json,
+              explanation,
+              questions_json,
+              created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+          `)
+          .bind(
+            crypto.randomUUID(),
+            reportId, // ✅ NOW VALID
+            sig.signal_id,
+            sig.category,
+            sig.severity_tier,
+            sig.confidence,
+            sig.deduction,
+            sig.hard_trigger ? 1 : 0,
+            sig.status,
+            JSON.stringify(sig.evidence || {}),
+            sig.explanation || "",
+            JSON.stringify(sig.suggested_questions || []),
+            now
+          )
+          .run();
+        }
+
+        console.log("SIGNALS_INSERTED", reportId);
         // ---- Update batch progress ----
         await env.DB.prepare(`
           UPDATE processing_batches
@@ -411,6 +517,16 @@ export default {
         .bind(batchId)
         .run();
   
+        // ---- THEN mark candidate completed ----
+        await env.DB.prepare(`
+          UPDATE candidates
+          SET processing_status = 'completed'
+          WHERE id = ?
+        `)
+        .bind(candidateId)
+        .run();
+
+        console.log("CANDIDATE_COMPLETED", candidateId);
         // ---- Check if batch finished ----
         const batchRow = await env.DB.prepare(`
           SELECT total_resumes, processed_resumes
@@ -431,9 +547,26 @@ export default {
           .bind(batchId)
           .run();
         }
-  
+        console.log("TRIGGERED_SIGNALS_COUNT", result.triggeredSignals?.length);
       } catch (err) {
         console.error("QUEUE_PROCESSING_ERROR", err);
+      
+        await env.DB.prepare(`
+          UPDATE candidates
+          SET processing_status = 'failed',
+              processing_error = ?
+          WHERE id = ?
+        `)
+        .bind(String(err), candidateId)
+        .run();
+      
+        await env.DB.prepare(`
+          UPDATE processing_batches
+          SET processed_resumes = processed_resumes + 1
+          WHERE id = ?
+        `)
+        .bind(batchId)
+        .run();
       }
     }
   }

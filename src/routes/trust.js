@@ -1502,6 +1502,13 @@ export async function renderTrustProfilesPage(request, env) {
       active: "profiles",
       body: `
         <div class="card">
+            <div style="margin-bottom:16px;">
+              <input type="file" id="bulkUploadInput" multiple accept="application/pdf" style="display:none;" />
+              <button type="button" onclick="document.getElementById('bulkUploadInput').click()">
+                Upload Resumes
+              </button>
+              <div id="batchStatus" style="margin-top:8px;"></div>
+            </div>
             <div class="row" style="align-items:center;">
             <div>
                 <h2 style="margin:2px 0 0;font-size:20px;">Trust Profiles</h2>
@@ -1948,7 +1955,7 @@ export async function renderTrustProfilesPage(request, env) {
 
           <table class="leaderboard-table">
             <thead>
-              <tr onclick="location.href='/trust/profile?id=' + item.id">
+              <tr>
                 <th class="rank-col">Rank</th>
                 <th class="score-col" onclick="toggleScoreSort()" style="cursor:pointer;" id="scoreHeader">
                   Score ↓
@@ -1972,46 +1979,28 @@ export async function renderTrustProfilesPage(request, env) {
         </div>
 
         <script>
-          function renderSignalPreview(signals){
+          document.getElementById("bulkUploadInput").addEventListener("change", () => {
+            const input = document.getElementById("bulkUploadInput");
 
-            const signalLabels = {
-              timeline_overlap: "Overlapping Roles",
-              gap_gt_6mo: "Unexplained Gap > 6 Months",
-              gap_after_edu_to_first_role: "Gap after Education Before First Role",
-              duplicate_roles: "Duplicate Role Entries",
-              duplicate_resume_upload: "Duplicate Resume Upload",
-              career_velocity: "Career Velocity Anomaly",
-              github_public_activity: "GitHub Activity Evidence",
-              github_public_claim_match: "GitHub Skill Plausibility Match",
-              github_identity_mismatch: "GitHub Identity Mismatch",
-              employer_existence_validation: "Employer Existence Validation",
-              claim_corroboration_coverage: "Claim Corroboration Coverage"
-            };
+            if (input.files && input.files.length > 0) {
+              uploadBulk();
+            }
+          });
+          function renderSignalPreview(signalIds, triggeredCount){
 
-            if (!signals || !signals.length) {
+            if (!triggeredCount || triggeredCount === 0) {
               return '<span class="signal-preview ok">✓ Clean</span>';
             }
 
-            return signals.slice(0,2).map(id => {
-
-              const label = signalLabels[id] || id.replace(/_/g, " ");
-
-              const severityColor =
-                id.includes("mismatch") ||
-                id.includes("gap") ||
-                id.includes("overlap")
-                  ? "#b42318"
-                  : "#6b7280";
-
-              return '<span style="color:' + severityColor + '">⚠ ' + label + '</span>';
-
-            }).join(" ");
+            return '<span class="signal-preview red">⚠ ' + triggeredCount + ' signals</span>';
           }
           
           function openQuickReport(reportId){
             const modal = document.getElementById("reportModal");
             const frame = document.getElementById("reportFrame");
+            if (!modal) return;
             const content = modal.querySelector(".report-modal-content");
+            if (!content) return;
 
             frame.src = "/trust/report?id=" + reportId;
 
@@ -2026,7 +2015,9 @@ export async function renderTrustProfilesPage(request, env) {
           function closeReportModal(){
             const modal = document.getElementById("reportModal");
             const frame = document.getElementById("reportFrame");
+            if (!modal) return;
             const content = modal.querySelector(".report-modal-content");
+            if (!content) return;
 
             content.style.transform = "translateY(10px) scale(.98)";
             content.style.opacity = "0";
@@ -2182,6 +2173,7 @@ export async function renderTrustProfilesPage(request, env) {
   
           function row(item) {
             const latest = item.latest_report;
+            console.log("ROW_LATEST", latest);
 
             const dupPill = hasSignal(item, "duplicate_resume_upload")
               ? pill("Duplicate upload", "rgba(245,158,11,.12)", "rgba(245,158,11,.28)", "#8a5a00")
@@ -2229,7 +2221,7 @@ export async function renderTrustProfilesPage(request, env) {
                 '</td>' +
 
                 '<td class="signals-col">' +
-                  renderSignalPreview(latest.signal_ids || []) +
+                  renderSignalPreview(latest?.signal_ids || [], latest?.triggered_count || 0) +
                 '</td>' +
 
                 '<td class="uploads-col">' +
@@ -2295,7 +2287,7 @@ export async function renderTrustProfilesPage(request, env) {
           renderInsights(items);
           el.innerHTML = items.length
             ? items.map(row).join("")
-            : '<tr><td colspan="7" class="fine">No matches.</td></tr>';
+            : '<tr><td colspan="7" class="fine">No candidates yet.<br/>Upload resumes to get started.</td></tr>'
 
           const s = document.getElementById("filterSummary");
           if (s) s.textContent = items.length + "/" + allItems.length;
@@ -2398,6 +2390,8 @@ export async function renderTrustProfilesPage(request, env) {
         syncMiniChipStates();
         load();
     </script>
+    <script src="/client/pdf_extract.js"></script>
+    <script type="module" src="/client/trust_page.js"></script>
     <div id="reportModal" class="report-modal">
       <div class="report-modal-content">
 
@@ -2882,33 +2876,43 @@ export async function apiTrustProfiles(request, env) {
           p.source_type,
           p.extractor,
           p.created_at,
-      
-          (SELECT COUNT(1)
-           FROM trust_candidate_profiles p2
-           WHERE p2.created_by_candidate_id = p.created_by_candidate_id
-             AND p2.doc_hash = p.doc_hash
-          ) AS ingest_count,
-      
+
+          1 AS ingest_count,
+
           (SELECT COUNT(1) FROM trust_reports r WHERE r.trust_profile_id = p.id) AS report_count,
+
           (SELECT r2.id FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) AS latest_report_id,
           (SELECT r2.trust_score FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) AS latest_trust_score,
           (SELECT r2.bucket FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) AS latest_bucket,
           (SELECT r2.created_at FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) AS latest_report_created_at,
-          (SELECT COUNT(1) FROM trust_signals s WHERE s.trust_report_id = (SELECT r2.id FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1)) AS latest_triggered_count,
-          (SELECT GROUP_CONCAT(signal_id, ',') FROM (SELECT s.signal_id FROM trust_signals s WHERE s.trust_report_id = (SELECT r2.id FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) ORDER BY CASE s.severity_tier WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END, s.deduction DESC, s.created_at ASC LIMIT 5)) AS latest_signal_ids
-      
-        FROM trust_candidate_profiles p
-        WHERE p.created_by_candidate_id = ?
-          AND p.created_at = (
-            SELECT MAX(p3.created_at)
-            FROM trust_candidate_profiles p3
-            WHERE p3.created_by_candidate_id = p.created_by_candidate_id
-              AND p3.doc_hash = p.doc_hash
+
+          (SELECT COUNT(1)
+          FROM trust_signals s
+          WHERE s.trust_report_id = (
+            SELECT r2.id
+            FROM trust_reports r2
+            WHERE r2.trust_profile_id = p.id
+            ORDER BY r2.created_at DESC LIMIT 1
           )
+          AND s.status = 'triggered'
+          ) AS latest_triggered_count,
+
+          (SELECT GROUP_CONCAT(signal_id, ',')
+          FROM trust_signals s
+          WHERE s.trust_report_id = (
+            SELECT r2.id
+            FROM trust_reports r2
+            WHERE r2.trust_profile_id = p.id
+            ORDER BY r2.created_at DESC LIMIT 1
+          )
+          AND s.status = 'triggered'
+          ) AS latest_signal_ids
+
+        FROM trust_candidate_profiles p
         ORDER BY p.created_at DESC
-        LIMIT 20
+        LIMIT 50
         `
-      ).bind(sess.candidate_id).all();
+      ).all();
       
   
     return json({
@@ -3102,87 +3106,98 @@ export async function apiTrustUpload(request, env) {
 }
 
 export async function apiRecruiterUpload(request, env) {
-  console.log("UPLOAD API HIT");
+  try{
+    console.log("UPLOAD VERSION v2 FIXED");
+    console.log("QUEUE EXISTS?", !!env.RESUME_QUEUE);
+    console.log("UPLOAD API HIT");
 
-  const sess = await requireSession(request, env);
-  if (!sess) return json({ error: "unauthorized" }, 401);
+    const sess = await requireSession(request, env);
+    if (!sess) return json({ error: "unauthorized" }, 401);
 
-  const allowed = isRecruiter(sess, env) || isAdmin(sess, env);
-  if (!allowed) return json({ error: "forbidden" }, 403);
+    const allowed = isRecruiter(sess, env) || isAdmin(sess, env);
+    if (!allowed) return json({ error: "forbidden" }, 403);
 
-  const formData = await request.formData();
-  const files = formData.getAll("files");
+    const formData = await request.formData();
+    const files = formData.getAll("files");
+    const texts = formData.getAll("texts");
 
-  if (!files || files.length === 0) {
-    return json({ error: "No files uploaded" }, 400);
-  }
+    if (!files || files.length === 0) {
+      return json({ error: "No files uploaded" }, 400);
+    }
 
-  const now = new Date().toISOString();
+    const now = new Date().toISOString();
 
-  // ✅ Generate jobId HERE (important)
-  const jobId = crypto.randomUUID();
+    // ✅ Generate jobId HERE (important)
+    const jobId = crypto.randomUUID();
 
-  // ✅ Create job row (required for FK)
-  await env.DB.prepare(`
-    INSERT INTO jobs (
-      id,
-      title,
-      company,
-      location,
-      source,
-      job_url,
-      created_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `)
-    .bind(
-      jobId,
-      "Bulk Upload Job",
-      null,
-      null,
-      "manual",
-      null,
-      now
-    )
-    .run();
+    // ✅ Create job row (required for FK)
+    await env.DB.prepare(`
+      INSERT INTO jobs (
+        id,
+        title,
+        company,
+        location,
+        source,
+        job_url,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+      .bind(
+        jobId,
+        "Bulk Upload Job",
+        null,
+        null,
+        "manual",
+        null,
+        now
+      )
+      .run();
 
-  // ✅ Create batch
-  const batchId = await createProcessingBatch(env.DB, jobId, files.length);
+    // ✅ Create batch
+    const batchId = await createProcessingBatch(env.DB, jobId, files.length);
 
-  const uploaded = [];
+    const uploaded = [];
 
-  for (const file of files) {
-    if (!file || file.type !== "application/pdf") continue;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+    
+      if (!file || file.type !== "application/pdf") continue;
+    
+      const buffer = await file.arrayBuffer();
+      const candidateId = crypto.randomUUID();
+      const r2Key = `jobs/${jobId}/${candidateId}_${file.name}`;
+    
+      await env.RESUME_BUCKET.put(r2Key, buffer, {
+        httpMetadata: { contentType: file.type }
+      });
+    
+      await env.RESUME_QUEUE.send({
+        jobId,
+        batchId,
+        candidateId,
+        filename: file.name,
+        r2Key,
+        extractedText: texts[i] || ""
+      });
+    
+      uploaded.push({
+        candidateId,
+        filename: file.name
+      });
+    }
 
-    const buffer = await file.arrayBuffer();
-    const candidateId = crypto.randomUUID();
-    const r2Key = `jobs/${jobId}/${candidateId}_${file.name}`;
-
-    await env.RESUME_BUCKET.put(r2Key, buffer, {
-      httpMetadata: { contentType: file.type }
-    });
-
-    await env.RESUME_QUEUE.send({
+    return json({
+      success: true,
       jobId,
       batchId,
-      candidateId,
-      filename: file.name,
-      r2Key
+      total: uploaded.length,
+      uploaded
     });
-
-    uploaded.push({
-      candidateId,
-      filename: file.name
-    });
+  }catch(e){
+      console.error("🔥 FULL ERROR STACK:", e.stack);
+      throw e;
   }
-
-  return json({
-    success: true,
-    jobId,
-    batchId,
-    total: uploaded.length,
-    uploaded
-  });
 }
 
 export async function apiTrustPdf(request, env) {
@@ -3452,6 +3467,24 @@ export async function apiJobStats(request, env, jobId) {
     ok: true,
     stats: rows
   }), {
+    headers: { "content-type": "application/json" }
+  });
+}
+
+export async function apiBatchStatus(request, env, batchId) {
+  const row = await env.DB.prepare(`
+    SELECT id, total_resumes, processed_resumes, status
+    FROM processing_batches
+    WHERE id = ?
+  `)
+  .bind(batchId)
+  .first();
+
+  if (!row) {
+    return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+  }
+
+  return new Response(JSON.stringify(row), {
     headers: { "content-type": "application/json" }
   });
 }

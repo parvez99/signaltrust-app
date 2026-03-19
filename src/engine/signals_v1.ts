@@ -10,6 +10,20 @@ export type SignalTier = "A" | "B" | "C";
 export type SignalStatus = "triggered" | "not_triggered";
 export type SignalConfidence = "low" | "medium" | "high";
 
+function getRoles(profile: any) {
+  if (Array.isArray(profile.experience) && profile.experience.length > 0) {
+    return profile.experience;
+  }
+  return profile.llmNormalizedProfile?.roles || [];
+}
+
+function getEducation(profile: any) {
+  if (Array.isArray(profile.education) && profile.education.length > 0) {
+    return profile.education;
+  }
+  return profile.llmNormalizedProfile?.education || [];
+}
+
 export type SignalResult = {
   signal_id: string;
   title: string;
@@ -249,7 +263,7 @@ export function signalDuplicateRoles(profile: any, ctx: RunSignalsCtx = {}): Sig
  * Signal 1: Overlapping Full-Time Roles (Tier A)
  */
 export function signalTimelineOverlap(profile: any): SignalResult {
-  const roles = Array.isArray(profile.experience) ? profile.experience : [];
+  const roles = getRoles(profile);
   const pairs: Array<{ role1: any; role2: any; overlapDays: number }> = [];
 
   for (let i = 0; i < roles.length; i++) {
@@ -344,7 +358,7 @@ function gapIsCoveredByEducation(profile: any, fromMs: number, toMs: number): bo
  * Signal 2: Unexplained Gap > 6 Months (Tier B)
  */
 export function signalGapGt6Months(profile: any): SignalResult {
-  const roles = (Array.isArray(profile.experience) ? profile.experience : []).filter((r: any) => r?.start_date?.iso);
+  const roles = getRoles(profile).filter((r: any) => r?.start_date?.iso);
   if (roles.length < 2) {
     return makeSignal({
       signal_id: "gap_gt_6mo",
@@ -429,8 +443,8 @@ export function signalGapGt6Months(profile: any): SignalResult {
 }
 
 export function signalGapAfterEducationToFirstRole(profile: any): SignalResult {
-  const edu = Array.isArray(profile.education) ? profile.education : [];
-  const roles = Array.isArray(profile.experience) ? profile.experience : [];
+  const edu = getEducation(profile);
+  const roles = getRoles(profile);
 
   const eduWithEnd = edu.filter((e: any) => e?.end_date?.iso);
   const rolesWithStart = roles.filter((r: any) => r?.start_date?.iso);
@@ -698,7 +712,7 @@ export function confidenceFromDatePrecision(roleA: any, roleB: any, prefer: Sign
 }
 
 export function signalCareerVelocity(profile: any) {
-    const roles = Array.isArray(profile.experience) ? profile.experience : [];
+    const roles = getRoles(profile);
     const dated = roles.filter((r: any) => r?.start_date?.iso);
   
     if (dated.length < 2) {

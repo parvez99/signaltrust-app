@@ -205,6 +205,88 @@ if (typeof document === "undefined") {
       await fetch("/auth/logout", { method: "POST" });
       window.location.replace("/");
     });
-  
+
+    function startBatchPolling(batchId) {
+      const interval = setInterval(async () => {
+        const statusEl = document.getElementById("batchStatus");
+        if (statusEl) statusEl.innerText = "Uploading resumes...";
+        const res = await fetch(`/api/batches/${batchId}`);
+        if (statusEl) statusEl.innerText = "Processing started...";
+        const data = await res.json();
+        if (!res.ok) {
+          console.error("Batch status fetch failed");
+          return;
+        }
+        if (statusEl) {
+          statusEl.innerText =
+            `Processing: ${data.processed_resumes}/${data.total_resumes}`;
+        }
+    
+        if (data.status === "completed") {
+          clearInterval(interval);
+    
+          if (statusEl) {
+            statusEl.innerText = "Processing complete ✅";
+          }
+    
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        }
+      }, 2000);
+    }
+    
+    window.uploadBulk = async function () {
+      const input = document.getElementById("bulkUploadInput");
+    
+      if (!input.files || input.files.length === 0) {
+        alert("Select at least one file");
+        return;
+      }
+    
+      const form = new FormData();
+    
+      for (const file of Array.from(input.files)) {
+
+        // 👇 STEP 1: extract text using PDF.js
+        let extractedText = "";
+      
+        try {
+          if (window.extractPdfText) {
+            const raw = await window.extractPdfText(file);
+            extractedText = normalizeExtractedText(raw);
+          }
+        } catch (e) {
+          console.warn("PDF extraction failed for", file.name);
+        }
+      
+        // 👇 STEP 2: send BOTH file + extracted text
+        form.append("files", file);
+        form.append("texts", extractedText); // ✅ CRITICAL FIX
+      }
+    
+      const res = await fetch("/api/recruiter/upload", {
+        method: "POST",
+        body: form,
+        credentials: "include"
+      });
+    
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        console.error("Invalid JSON response");
+        alert("Server error during upload");
+        return;
+      }
+    
+      if (!data.success) {
+        alert("Upload failed");
+        return;
+      }
+    
+      console.log("Batch started:", data.batchId);
+    
+      startBatchPolling(data.batchId);
+    }
   } // ✅ end guard
-  

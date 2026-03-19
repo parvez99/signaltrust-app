@@ -108,6 +108,26 @@ export async function runTrustPipeline(args: {
     sourceFilename: sourceFilename ?? "",
     now,
   })
+    // 🔥 HYBRID FIX (IMPROVED): Use LLM when deterministic is weak
+    const deterministicExp = profileForSignals.experience || [];
+    const llmExp = llmNormalizedProfile?.roles || [];
+
+    const shouldUseLLM =
+      deterministicExp.length < 2 ||   // not enough roles parsed
+      profileForSignals.parsing_quality?.overall === "low";  // bad parse quality
+
+    if (shouldUseLLM && llmExp.length) {
+      console.log("⚠️ Using LLM roles for signals (fallback triggered)");
+
+      profileForSignals.experience = llmExp.map((r: any) => ({
+        company: { raw: r.company || "" },
+        title: { raw: r.title || "" },
+
+        start_date: mapDateSafe(r.startDate),
+        end_date: mapDateSafe(r.endDate),
+      }));
+    }
+  console.log("FINAL EXPERIENCE FOR SIGNALS", profileForSignals.experience);
   const signalCtx: any = {
     sourceText,
     sourceFilename: sourceFilename ?? null,
@@ -290,6 +310,29 @@ function mapDate(iso: string | null, precision: string) {
         ? "month"
         : "day",
   }
+}
+function mapDateSafe(raw: string | null) {
+  if (!raw) return null;
+
+  // VERY basic parser (good enough for now)
+  const cleaned = raw.replace(/\n/g, " ").trim();
+  const iso = parseToISO(cleaned);
+
+  return {
+    raw,
+    iso,
+    precision: raw.length <= 4 ? "year" : "month",
+  };
+}
+
+function parseToISO(raw: string) {
+  try {
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().slice(0, 10);
+    }
+  } catch {}
+  return null;
 }
 
 function safeJson(input: any, fallback: any) {
