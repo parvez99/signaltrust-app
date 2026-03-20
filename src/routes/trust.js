@@ -1502,13 +1502,6 @@ export async function renderTrustProfilesPage(request, env) {
       active: "profiles",
       body: `
         <div class="card">
-            <div style="margin-bottom:16px;">
-              <input type="file" id="bulkUploadInput" multiple accept="application/pdf" style="display:none;" />
-              <button type="button" onclick="document.getElementById('bulkUploadInput').click()">
-                Upload Resumes
-              </button>
-              <div id="batchStatus" style="margin-top:8px;"></div>
-            </div>
             <div class="row" style="align-items:center;">
             <div>
                 <h2 style="margin:2px 0 0;font-size:20px;">Trust Profiles</h2>
@@ -1767,7 +1760,9 @@ export async function renderTrustProfilesPage(request, env) {
               cursor:pointer;
             }
             .leaderboard-table tbody tr:hover{
-              background:rgba(18,187,191,.06);
+              background:rgba(18,187,191,.08);
+              transform: scale(1.002);
+              transition: all .12s ease;
             }
             .rank-col{
               width:50px;
@@ -1880,6 +1875,16 @@ export async function renderTrustProfilesPage(request, env) {
             .signal-preview.red{
               color:#b42318;
             }
+            .banner {
+              padding: 12px 16px;
+              border-radius: 10px;
+              font-weight: 600;
+              margin-bottom: 16px;
+            }
+
+            .banner.red { background: #fee2e2; color: #991b1b; }
+            .banner.yellow { background: #fef3c7; color: #92400e; }
+            .banner.green { background: #d1fae5; color: #065f46; }
           </style>
             <div class="filter-bar">
                 <!-- LEFT: buckets + filter controls -->
@@ -1979,22 +1984,56 @@ export async function renderTrustProfilesPage(request, env) {
         </div>
 
         <script>
-          document.getElementById("bulkUploadInput").addEventListener("change", () => {
-            const input = document.getElementById("bulkUploadInput");
-
-            if (input.files && input.files.length > 0) {
-              uploadBulk();
-            }
-          });
-          function renderSignalPreview(signalIds, triggeredCount){
-
-            if (!triggeredCount || triggeredCount === 0) {
+          function renderSignalPreview(signalIds, triggeredCount) {
+            if (!triggeredCount) {
               return '<span class="signal-preview ok">✓ Clean</span>';
             }
 
-            return '<span class="signal-preview red">⚠ ' + triggeredCount + ' signals</span>';
+            const map = {
+              timeline_overlap: "Overlap",
+              gap_gt_6mo: "Gap",
+              career_velocity: "Velocity",
+              duplicate_roles: "Duplicate",
+              claim_corroboration_coverage: "Claims"
+            };
+
+            const labels = (signalIds || [])
+              .map(id => map[id])
+              .filter(Boolean);
+
+            const preview = labels.slice(0, 2).join(" • ");
+            const extra = labels.length > 2 ? ' +' + (labels.length - 2) : '';
+
+            return '<span class="signal-preview red">⚠ ' + preview + extra + '</span>';
           }
           
+          function renderScoreBadge(score, bucket) {
+            const color =
+              bucket === "red" ? "#ef4444" :
+              bucket === "yellow" ? "#f59e0b" :
+              "#10b981";
+
+            return '<div style="' +
+              'font-weight:700;' +
+              'font-size:14px;' +
+              'padding:6px 10px;' +
+              'border-radius:8px;' +
+              'background:' + color + '15;' +
+              'color:' + color + ';' +
+              'display:inline-block;' +
+            '">' +
+              score +
+            '</div>';
+          }
+          function renderDecisionBanner(bucket) {
+            if (bucket === "red") {
+              return '<div class="banner red">🔴 High Risk — Investigate before proceeding</div>';
+            }
+            if (bucket === "yellow") {
+              return '<div class="banner yellow">🟡 Moderate Risk — Ask clarifying questions</div>';
+            }
+            return '<div class="banner green">🟢 Low Risk — Safe to proceed</div>';
+          }
           function openQuickReport(reportId){
             const modal = document.getElementById("reportModal");
             const frame = document.getElementById("reportFrame");
@@ -2033,22 +2072,33 @@ export async function renderTrustProfilesPage(request, env) {
 
             let totalSignals = 0;
             let riskyCandidates = 0;
+            let highRisk = 0;
 
             items.forEach(item => {
-              const count = item?.latest_report?.triggered_count || 0;
+              const latest = item.latest_report;
+              const count = latest?.triggered_count || 0;
+
               if (count > 0) {
                 totalSignals += count;
                 riskyCandidates += 1;
               }
+
+              if (latest?.bucket === "red") {
+                highRisk += 1;
+              }
             });
 
-            let html = "";
+            let html = '';
 
             if (totalSignals > 0) {
-              html += '<div class="insight-pill">⚠ ' + totalSignals + ' total signals detected</div>';
-              html += '<div class="insight-pill">⚠ ' + riskyCandidates + ' candidates need review</div>';
+              html += '<div class="insight-pill">⚠ ' + totalSignals + ' signals detected</div>';
+              html += '<div class="insight-pill">👀 ' + riskyCandidates + ' candidates need review</div>';
+
+              if (highRisk > 0) {
+                html += '<div class="insight-pill">🔴 ' + highRisk + ' high-risk candidates</div>';
+              }
             } else {
-              html = '<div class="insight-pill">✔ No major risk signals detected</div>';
+              html = '<div class="insight-pill">✔ No major risk signals</div>';
             }
 
             el.innerHTML = html;
@@ -2178,7 +2228,12 @@ export async function renderTrustProfilesPage(request, env) {
             const dupPill = hasSignal(item, "duplicate_resume_upload")
               ? pill("Duplicate upload", "rgba(245,158,11,.12)", "rgba(245,158,11,.28)", "#8a5a00")
               : "";
-
+            const confidenceDot =
+              latest?.bucket === "red"
+                ? '<span style="width:8px;height:8px;background:#ef4444;border-radius:50%;display:inline-block;"></span>'
+                : latest?.bucket === "yellow"
+                ? '<span style="width:8px;height:8px;background:#f59e0b;border-radius:50%;display:inline-block;"></span>'
+                : '<span style="width:8px;height:8px;background:#10b981;border-radius:50%;display:inline-block;"></span>';
             const latestHtml = latest
               ? '<div class="row" style="gap:8px; flex-wrap:wrap;">' +
                   bucketBadge(latest.bucket) +
@@ -2204,7 +2259,7 @@ export async function renderTrustProfilesPage(request, env) {
                 '</td>' +
 
                 '<td class="score ' + scoreClass + '">' +
-                  (latest ? latest.trust_score : '-') +
+                  confidenceDot + ' ' + (latest ? latest.trust_score : '-') +
                 '</td>' +
 
                 '<td>' +
@@ -2287,7 +2342,10 @@ export async function renderTrustProfilesPage(request, env) {
           renderInsights(items);
           el.innerHTML = items.length
             ? items.map(row).join("")
-            : '<tr><td colspan="7" class="fine">No candidates yet.<br/>Upload resumes to get started.</td></tr>'
+            : '<tr><td colspan="7" style="padding:40px;text-align:center;">' +
+              '<div style="font-weight:700;">No candidates yet</div>' +
+              '<div class="fine" style="margin-top:6px;">Upload resumes to start trust analysis</div>' +
+              '</td></tr>'
 
           const s = document.getElementById("filterSummary");
           if (s) s.textContent = items.length + "/" + allItems.length;

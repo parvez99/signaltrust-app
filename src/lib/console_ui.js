@@ -265,6 +265,32 @@ export function consoleShell({
         .embedded-report .upload-btn{
           display:none !important;
         }
+        .upload-wrapper {
+          position: relative;
+        }
+
+        .upload-menu {
+          position: absolute;
+          right: 0;
+          top: 42px;
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 12px 30px rgba(0,0,0,0.12);
+          width: 240px;
+          overflow: hidden;
+          z-index: 100;
+          border: 1px solid var(--border);
+        }
+
+        .upload-item {
+          padding: 12px 14px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+
+        .upload-item:hover {
+          background: rgba(11,18,32,.05);
+        }
       </style>
 
       <div class="console-wrap">
@@ -300,7 +326,16 @@ export function consoleShell({
             <div class="content-topbar">
               <div class="content-title">${escapeHtml(title || "")}</div>
               <span class="spacer"></span>
-              ${mode !== "workspace" ? '<a class="btn btn-primary" href="/trust">Upload</a>' : ''}
+              ${mode !== "workspace" ? `
+                <div class="upload-wrapper">
+                  <button class="btn btn-primary" onclick="toggleUploadMenu()">Upload ▾</button>
+              
+                  <div id="uploadMenu" class="upload-menu" style="display:none;">
+                    <div class="upload-item" onclick="handleUpload('single')">📄 Upload Single Resume</div>
+                    <div class="upload-item" onclick="handleUpload('bulk')">📦 Bulk Upload</div>
+                  </div>
+                </div>
+              ` : ''}
             </div>
 
             ${
@@ -343,17 +378,98 @@ export function consoleShell({
                 `
             }
 
-            <script>
-              const rail = document.querySelector('.rail');
-              const consoleEl = document.querySelector('.console');
+          <script>
+            const rail = document.querySelector('.rail');
+            const consoleEl = document.querySelector('.console');
 
-              rail?.addEventListener('mouseenter', () => consoleEl?.classList.add('rail-open'));
-              rail?.addEventListener('mouseleave', () => consoleEl?.classList.remove('rail-open'));
-              document.getElementById('logout')?.addEventListener('click', async () => {
-                await fetch('/auth/logout', { method: 'POST' });
-                window.location.replace('/');
+            rail?.addEventListener('mouseenter', () => consoleEl?.classList.add('rail-open'));
+            rail?.addEventListener('mouseleave', () => consoleEl?.classList.remove('rail-open'));
+
+            document.getElementById('logout')?.addEventListener('click', async () => {
+              await fetch('/auth/logout', { method: 'POST' });
+              window.location.replace('/');
+            });
+
+            // 🔥 ADD EVERYTHING BELOW THIS
+
+            function toggleUploadMenu() {
+              const menu = document.getElementById("uploadMenu");
+              if (!menu) return;
+              menu.style.display = menu.style.display === "none" ? "block" : "none";
+            }
+
+            function handleUpload(type) {
+              const menu = document.getElementById("uploadMenu");
+              if (menu) menu.style.display = "none";
+
+              if (type === "single") openSingleUpload();
+              if (type === "bulk") openBulkUpload();
+            }
+
+            function openSingleUpload() {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = ".pdf";
+              input.multiple = false;
+
+              input.onchange = function () {
+                const file = input.files[0];
+                if (file) uploadSingleFile(file);
+              };
+
+              input.click();
+            }
+
+            function openBulkUpload() {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = ".pdf";
+              input.multiple = true;
+
+              input.onchange = function () {
+                const files = Array.from(input.files || []);
+                if (files.length) uploadBulkFiles(files);
+              };
+
+              input.click();
+            }
+
+            async function uploadSingleFile(file) {
+              const form = new FormData();
+              form.append("file", file);
+
+              await fetch("/api/trust/upload", {
+                method: "POST",
+                body: form
               });
-            </script>
+
+              location.reload();
+            }
+
+            async function uploadBulkFiles(files) {
+              const form = new FormData();
+              files.forEach(f => form.append("files", f));
+
+              await fetch("/api/recruiter/upload", {
+                method: "POST",
+                body: form
+              });
+
+              location.reload();
+            }
+
+            // Optional: close dropdown on outside click
+            document.addEventListener("click", function(e) {
+              const menu = document.getElementById("uploadMenu");
+              const btn = document.querySelector(".btn-primary");
+
+              if (!menu || !btn) return;
+
+              if (!btn.contains(e.target) && !menu.contains(e.target)) {
+                menu.style.display = "none";
+              }
+            });
+          </script>
           </main>
         </div>
       </div>
