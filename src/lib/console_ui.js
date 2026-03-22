@@ -392,13 +392,13 @@ export function consoleShell({
 
             // 🔥 ADD EVERYTHING BELOW THIS
 
-            function toggleUploadMenu() {
+            window.toggleUploadMenu = function toggleUploadMenu() {
               const menu = document.getElementById("uploadMenu");
               if (!menu) return;
               menu.style.display = menu.style.display === "none" ? "block" : "none";
             }
 
-            function handleUpload(type) {
+            window.handleUpload = function handleUpload(type) {
               const menu = document.getElementById("uploadMenu");
               if (menu) menu.style.display = "none";
 
@@ -450,14 +450,85 @@ export function consoleShell({
               const form = new FormData();
               files.forEach(f => form.append("files", f));
 
-              await fetch("/api/recruiter/upload", {
+              const res = await fetch("/api/recruiter/upload", {
                 method: "POST",
                 body: form
               });
 
-              location.reload();
-            }
+              const text = await res.text();
+              let data;
 
+              try {
+                data = JSON.parse(text);
+              } catch (err) {
+                console.error("Upload returned non-JSON:", text);
+                alert("Upload failed — server did not return JSON");
+                return;
+              }
+
+              if (!res.ok) {
+                console.error("UPLOAD_FAILED", data);
+                alert(data.error || "Upload failed");
+                return;
+              }
+
+              const batchId = data.batchId || data.batch_id;
+
+              if (!batchId) {
+                console.error("No batch id returned", data);
+                alert("Batch creation failed");
+                return;
+              }
+
+              trackBatchProgress(batchId);
+            }
+            const processingMessages = [
+              "🔍 Analyzing career timeline...",
+              "🧠 Running trust signals...",
+              "🧩 Connecting career dots...",
+              "📄 Reading between the lines...",
+              "🕵️ Checking for inconsistencies...",
+              "⚖️ Weighing experience vs claims...",
+              "📊 Scoring candidate trust...",
+              "🧪 Running deep verification checks...",
+              "👀 Looking for suspicious patterns...",
+              "🤖 Asking: does this story add up?",
+              "☕ Fueling AI with coffee...",
+              "🚀 Almost there..."
+            ];
+            function trackBatchProgress(batchId) {
+              const el = document.getElementById("batchStatus");
+              if (!el) return;
+
+              const interval = setInterval(async () => {
+                try {
+                  const res = await fetch("/api/batches/" + batchId);
+                  const data = await res.json();
+
+                  const processed = data.processed_resumes || 0;
+                  const total = data.total_resumes || 0;
+
+                  const randomMsg = processingMessages[
+                    Math.floor(Math.random() * processingMessages.length)
+                  ];
+
+                  el.innerHTML =
+                    '<div class="fine">' +
+                    '⚙️ Processing: <b>' + processed + '</b> / ' + total + '<br/>' +
+                    '<span style="opacity:.7;">' + randomMsg + '</span>' +
+                    '</div>';
+
+                  if (processed >= total) {
+                    clearInterval(interval);
+                    el.innerHTML = '<div class="fine">✅ Processing complete</div>';
+                    load(); // refresh table
+                  }
+                } catch (err) {
+                  console.error("Batch tracking failed", err);
+                  clearInterval(interval);
+                }
+              }, 2000);
+            }
             // Optional: close dropdown on outside click
             document.addEventListener("click", function(e) {
               const menu = document.getElementById("uploadMenu");

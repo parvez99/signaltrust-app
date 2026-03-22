@@ -1502,6 +1502,7 @@ export async function renderTrustProfilesPage(request, env) {
       active: "profiles",
       body: `
         <div class="card">
+            <div id="batchStatus" style="margin:10px 0;"></div>
             <div class="row" style="align-items:center;">
             <div>
                 <h2 style="margin:2px 0 0;font-size:20px;">Trust Profiles</h2>
@@ -1982,8 +1983,19 @@ export async function renderTrustProfilesPage(request, env) {
           </table>
 
         </div>
-
+        <div id="paginationBar" style="
+          display:flex;
+          gap:8px;
+          align-items:center;
+          justify-content:center;
+          padding:16px 0;
+        "></div>
         <script>
+            let pagination = {
+              page: 1,
+              pageSize: 25,
+              total: 0
+            };        
           function renderSignalPreview(signalIds, triggeredCount) {
             if (!triggeredCount) {
               return '<span class="signal-preview ok">✓ Clean</span>';
@@ -2006,7 +2018,6 @@ export async function renderTrustProfilesPage(request, env) {
 
             return '<span class="signal-preview red">⚠ ' + preview + extra + '</span>';
           }
-          
           function renderScoreBadge(score, bucket) {
             const color =
               bucket === "red" ? "#ef4444" :
@@ -2340,6 +2351,7 @@ export async function renderTrustProfilesPage(request, env) {
             })
             .map((item, index) => ({ ...item, rank: index + 1 }));
           renderInsights(items);
+          renderPagination();
           el.innerHTML = items.length
             ? items.map(row).join("")
             : '<tr><td colspan="7" style="padding:40px;text-align:center;">' +
@@ -2352,19 +2364,106 @@ export async function renderTrustProfilesPage(request, env) {
 
           renderActiveFilters();
         }
+        function renderPagination() {
 
-        async function load() {
+          var el = document.getElementById("paginationBar");
+
+          if (!el) return;
+
+          var totalPages =
+            Math.ceil(pagination.total / pagination.pageSize);
+
+          if (totalPages <= 1) {
+            el.innerHTML = "";
+            return;
+          }
+
+          var html = "";
+
+          html +=
+            '<button class="btn btn-sm" ' +
+            (pagination.page === 1 ? 'disabled' : '') +
+            ' onclick="changePage(' + (pagination.page - 1) + ')">' +
+            'Prev</button>';
+
+          for (var i = 1; i <= totalPages; i++) {
+
+            if (
+              i === 1 ||
+              i === totalPages ||
+              Math.abs(i - pagination.page) <= 2
+            ) {
+
+              html +=
+                '<button class="btn btn-sm" ' +
+                'style="' +
+                (i === pagination.page
+                  ? 'background:#e6fffa;'
+                  : '') +
+                '" ' +
+                'onclick="changePage(' + i + ')">' +
+                i +
+                '</button>';
+
+            }
+            else if (
+              i === pagination.page - 3 ||
+              i === pagination.page + 3
+            ) {
+
+              html += '<span>...</span>';
+
+            }
+
+          }
+
+          html +=
+            '<button class="btn btn-sm" ' +
+            (pagination.page === totalPages ? 'disabled' : '') +
+            ' onclick="changePage(' + (pagination.page + 1) + ')">' +
+            'Next</button>';
+
+          html +=
+            '<span class="fine" style="margin-left:12px;">' +
+            'Showing ' +
+            ((pagination.page - 1) * pagination.pageSize + 1) +
+            ' - ' +
+            Math.min(
+              pagination.page * pagination.pageSize,
+              pagination.total
+            ) +
+            ' of ' +
+            pagination.total +
+            '</span>';
+
+          el.innerHTML = html;
+
+        }
+        function changePage(p) {
+
+          pagination.page = p;
+
+          load();
+
+        }
+      async function load() {
         const el = document.getElementById("list");
         if (!el) return;
         el.textContent = "Loading…";
 
-        const res = await fetch("/api/trust/profiles");
+        const res = await fetch(
+          "/api/trust/profiles?page=" +
+          pagination.page +
+          "&page_size=" +
+          pagination.pageSize
+        );
         const data = await readJson(res);
         if (!res.ok) {
             el.textContent = data.error || "Failed";
             return;
         }
         allItems = data.items || [];
+        pagination.total = data.total || 0;
         const c = computeCounts(allItems);
         document.getElementById("countAll").textContent = String(c.all);
         document.getElementById("countGreen").textContent = String(c.green);
@@ -2372,38 +2471,37 @@ export async function renderTrustProfilesPage(request, env) {
         document.getElementById("countRed").textContent = String(c.red);
         syncMiniChipStates();
         render();
-        }
-        
-        // Bucket cards
-        document.querySelectorAll(".bucket-card").forEach(btn => {
+      }
+      // Bucket cards
+      document.querySelectorAll(".bucket-card").forEach(btn => {
         btn.addEventListener("click", () => setActiveBucket(btn.dataset.bucket));
-        });
-        setActiveBucket("all");
+      });
+      setActiveBucket("all");
 
-        // Panels (+ Score / + Signals / + More)
+      // Panels (+ Score / + Signals / + More)
         document.getElementById("openScore")?.addEventListener("click", () => togglePanel("panelScore"));
         document.getElementById("openSignals")?.addEventListener("click", () => togglePanel("panelSignals"));
         document.getElementById("openMore")?.addEventListener("click", () => togglePanel("panelMore"));
 
-        // Mini chips: score
-        document.querySelectorAll('.mini-chip[data-score]').forEach(btn => {
+      // Mini chips: score
+      document.querySelectorAll('.mini-chip[data-score]').forEach(btn => {
         btn.addEventListener("click", () => {
             const v = btn.dataset.score || "";
             state.score = (state.score === v) ? "" : v;
             syncMiniChipStates();
             render();
         });
-        });
+      });
 
-        // Mini chips: mode (mutually exclusive)
-        document.querySelectorAll('.mini-chip[data-mode]').forEach(btn => {
+      // Mini chips: mode (mutually exclusive)
+      document.querySelectorAll('.mini-chip[data-mode]').forEach(btn => {
         btn.addEventListener("click", () => {
             const v = btn.dataset.mode || "";
             state.mode = (state.mode === v) ? "" : v;
             syncMiniChipStates();
             render();
         });
-        });
+      });
 
         // Mini chips: signals (multi-select)
         document.querySelectorAll('.mini-chip[data-sig]').forEach(btn => {
@@ -2919,62 +3017,70 @@ export async function apiTrustProfile(request, env) {
       }))
     });
 }
-export async function apiTrustProfiles(request, env) {
+  export async function apiTrustProfiles(request, env) {
     const sess = await requireSession(request, env);
     if (!sess) return json({ error: "unauthorized" }, 401);
-  
+
     const allowed = isRecruiter(sess, env) || isAdmin(sess, env);
     if (!allowed) return json({ error: "forbidden" }, 403);
+
+    const url = new URL(request.url);
+
+    const page = Number(url.searchParams.get("page") || 1);
+    const pageSize = Number(url.searchParams.get("page_size") || 25);
+
+    const offset = (page - 1) * pageSize;
   
-    const { results } = await env.DB.prepare(
-        `
-        SELECT
-          p.id,
-          p.source_filename,
-          p.source_type,
-          p.extractor,
-          p.created_at,
-
-          1 AS ingest_count,
-
-          (SELECT COUNT(1) FROM trust_reports r WHERE r.trust_profile_id = p.id) AS report_count,
-
-          (SELECT r2.id FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) AS latest_report_id,
-          (SELECT r2.trust_score FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) AS latest_trust_score,
-          (SELECT r2.bucket FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) AS latest_bucket,
-          (SELECT r2.created_at FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) AS latest_report_created_at,
-
-          (SELECT COUNT(1)
-          FROM trust_signals s
-          WHERE s.trust_report_id = (
-            SELECT r2.id
-            FROM trust_reports r2
-            WHERE r2.trust_profile_id = p.id
-            ORDER BY r2.created_at DESC LIMIT 1
-          )
-          AND s.status = 'triggered'
-          ) AS latest_triggered_count,
-
-          (SELECT GROUP_CONCAT(signal_id, ',')
-          FROM trust_signals s
-          WHERE s.trust_report_id = (
-            SELECT r2.id
-            FROM trust_reports r2
-            WHERE r2.trust_profile_id = p.id
-            ORDER BY r2.created_at DESC LIMIT 1
-          )
-          AND s.status = 'triggered'
-          ) AS latest_signal_ids
-
-        FROM trust_candidate_profiles p
-        ORDER BY p.created_at DESC
-        LIMIT 50
-        `
-      ).all();
+    const { results } = await env.DB.prepare(`
+      SELECT
+        p.id,
+        p.source_filename,
+        p.source_type,
+        p.extractor,
+        p.created_at,
       
+        1 AS ingest_count,
+      
+        (SELECT COUNT(1) FROM trust_reports r WHERE r.trust_profile_id = p.id) AS report_count,
+      
+        (SELECT r2.id FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) AS latest_report_id,
+        (SELECT r2.trust_score FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) AS latest_trust_score,
+        (SELECT r2.bucket FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) AS latest_bucket,
+        (SELECT r2.created_at FROM trust_reports r2 WHERE r2.trust_profile_id = p.id ORDER BY r2.created_at DESC LIMIT 1) AS latest_report_created_at,
+      
+        (SELECT COUNT(1)
+          FROM trust_signals s
+          WHERE s.trust_report_id = (
+            SELECT r2.id
+            FROM trust_reports r2
+            WHERE r2.trust_profile_id = p.id
+            ORDER BY r2.created_at DESC LIMIT 1
+          )
+        ) AS latest_triggered_count,
+      
+        (SELECT GROUP_CONCAT(signal_id, ',')
+          FROM trust_signals s
+          WHERE s.trust_report_id = (
+            SELECT r2.id
+            FROM trust_reports r2
+            WHERE r2.trust_profile_id = p.id
+            ORDER BY r2.created_at DESC LIMIT 1
+          )
+        ) AS latest_signal_ids
+      
+      FROM trust_candidate_profiles p
+      ORDER BY p.created_at DESC
+      LIMIT ? OFFSET ?
+      `)
+      .bind(pageSize, offset)
+      .all();
+      
+      const totalRes = await env.DB.prepare(`
+        SELECT COUNT(1) as total
+        FROM trust_candidate_profiles
+        `).first();
   
-    return json({
-      items: (results || []).map(r => ({
+      const items = (results || []).map(r => ({
         id: r.id,
         filename: r.source_filename,
         source_type: r.source_type,
@@ -2982,16 +3088,29 @@ export async function apiTrustProfiles(request, env) {
         created_at: r.created_at,
         report_count: Number(r.report_count || 0),
         ingest_count: Number(r.ingest_count || 1),
-        latest_report: r.latest_report_id ? {
-          id: r.latest_report_id,
-          trust_score: r.latest_trust_score,
-          bucket: r.latest_bucket,
-          created_at: r.latest_report_created_at,
-          triggered_count: Number(r.latest_triggered_count || 0),
-          signal_ids: (r.latest_signal_ids || "").split(",").map(x => x.trim()).filter(Boolean),
-        } : null
-      }))
-    });
+      
+        latest_report: r.latest_report_id
+          ? {
+              id: r.latest_report_id,
+              trust_score: r.latest_trust_score,
+              bucket: r.latest_bucket,
+              created_at: r.latest_report_created_at,
+              triggered_count: Number(r.latest_triggered_count || 0),
+              signal_ids: (r.latest_signal_ids || "")
+                .split(",")
+                .map(x => x.trim())
+                .filter(Boolean)
+            }
+          : null
+      }));
+      
+      
+      return json({
+        items,
+        total: Number(totalRes?.total || 0),
+        page,
+        page_size: pageSize
+      });
 }  
 export async function apiTrustReport(request, env) {
     const sess = await requireSession(request, env);
